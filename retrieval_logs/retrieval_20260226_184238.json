@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-02-26T18:42:38.913684",
+  "question": "我说的是上上一个问题的非常高是多高",
+  "retrieved_docs": [
+    {
+      "content": "Prize amount: 11 million Swedish kronor, to be shared equally between the laureates. \nFurther information: www.kva.se and www.nobelprize.org Press contact: Eva Nevelius, Press \nSecretary, +46 70 878 67 63, eva.nevelius@kva.se Experts: Olle Eriksson, +46 18 471 36 25, \nolle.eriksson@physics.uu.se and Anders Irbäck, +46 46 222 34 93, anders.irback@cec.lu.se, \nmembers of the Nobel Committee for Physics. \nThe Royal Swedish Academy of Sciences, founded in 1739, is an independent organisation whose \no",
+      "metadata": {
+        "producer": "LibreOffice 7.3",
+        "creator": "Writer",
+        "creationdate": "2025-02-24T18:42:53+01:00",
+        "source": "F:\\py\\Bishe\\langchain-ollama-elasticsearch/data\\press-physics-nobel-prize-2024.pdf",
+        "total_pages": 2,
+        "page": 1,
+        "page_label": "2",
+        "similarity": 0.7069447
+      },
+      "raw_score": 0.7069447
+    },
+    {
+      "content": "arise when the machine is run. The Boltzmann machine can be used to classify images or create \nnew examples of the type of pattern on which it was trained. Hinton has built upon this work, \nhelping initiate the current explosive development of machine learning. “The laureates’ work has \nalready been of the greatest benefit. In physics we use artificial neural networks in a vast range of \nareas, such as developing new materials with specific properties,” says Ellen Moons, Chair of the \nNobel Comm",
+      "metadata": {
+        "producer": "LibreOffice 7.3",
+        "creator": "Writer",
+        "creationdate": "2025-02-24T18:42:53+01:00",
+        "source": "F:\\py\\Bishe\\langchain-ollama-elasticsearch/data\\press-physics-nobel-prize-2024.pdf",
+        "total_pages": 2,
+        "page": 0,
+        "page_label": "1",
+        "similarity": 0.68989426
+      },
+      "raw_score": 0.68989426
+    },
+    {
+      "content": "memory that can store and reconstruct images and other types of patterns in data. Geoffrey Hinton \ninvented a method that can autonomously find properties in data, and so perform tasks such as \nidentifying specific elements in pictures. When we talk about artificial intelligence, we often mean \nmachine learning using artificial neural networks. This technology was originally inspired by the \nstructure of the brain. In an artificial neural network, the brain’s neurons are represented by nodes \nth",
+      "metadata": {
+        "producer": "LibreOffice 7.3",
+        "creator": "Writer",
+        "creationdate": "2025-02-24T18:42:53+01:00",
+        "source": "F:\\py\\Bishe\\langchain-ollama-elasticsearch/data\\press-physics-nobel-prize-2024.pdf",
+        "total_pages": 2,
+        "page": 0,
+        "page_label": "1",
+        "similarity": 0.6806624
+      },
+      "raw_score": 0.6806624
+    }
+  ],
+  "answer": "您提到的“上上一个问题的非常高是多高”不太清楚，如果您是指某个具体高度，请提供更多的上下文信息以便准确回答。如果是比喻或夸张的说法，那通常表示非常高，但没有具体的数值。",
+  "used_context": true
+}

@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-02-26T18:25:45.354221",
+  "question": "你好",
+  "retrieved_docs": [
+    {
+      "content": "Prize amount: 11 million Swedish kronor, to be shared equally between the laureates. \nFurther information: www.kva.se and www.nobelprize.org Press contact: Eva Nevelius, Press \nSecretary, +46 70 878 67 63, eva.nevelius@kva.se Experts: Olle Eriksson, +46 18 471 36 25, \nolle.eriksson@physics.uu.se and Anders Irbäck, +46 46 222 34 93, anders.irback@cec.lu.se, \nmembers of the Nobel Committee for Physics. \nThe Royal Swedish Academy of Sciences, founded in 1739, is an independent organisation whose \no",
+      "metadata": {
+        "producer": "LibreOffice 7.3",
+        "creator": "Writer",
+        "creationdate": "2025-02-24T18:42:53+01:00",
+        "source": "F:\\py\\Bishe\\langchain-ollama-elasticsearch/data\\press-physics-nobel-prize-2024.pdf",
+        "total_pages": 2,
+        "page": 1,
+        "page_label": "2",
+        "similarity": 0.74747646
+      },
+      "raw_score": 0.74747646
+    },
+    {
+      "content": "arise when the machine is run. The Boltzmann machine can be used to classify images or create \nnew examples of the type of pattern on which it was trained. Hinton has built upon this work, \nhelping initiate the current explosive development of machine learning. “The laureates’ work has \nalready been of the greatest benefit. In physics we use artificial neural networks in a vast range of \nareas, such as developing new materials with specific properties,” says Ellen Moons, Chair of the \nNobel Comm",
+      "metadata": {
+        "producer": "LibreOffice 7.3",
+        "creator": "Writer",
+        "creationdate": "2025-02-24T18:42:53+01:00",
+        "source": "F:\\py\\Bishe\\langchain-ollama-elasticsearch/data\\press-physics-nobel-prize-2024.pdf",
+        "total_pages": 2,
+        "page": 0,
+        "page_label": "1",
+        "similarity": 0.714269
+      },
+      "raw_score": 0.714269
+    },
+    {
+      "content": "have low energy. When the Hopfield network is fed a distorted or incomplete image, it methodically\nworks through the nodes and updates their values so the network’s energy falls. The network thus \nworks stepwise to find the saved image that is most like the imperfect one it was fed with. \nGeoffrey Hinton used the Hopfield network as the foundation for a new network that uses a \ndifferent method: the Boltzmann machine. This can learn to recognise characteristic elements in a \ngiven type of data. ",
+      "metadata": {
+        "producer": "LibreOffice 7.3",
+        "creator": "Writer",
+        "creationdate": "2025-02-24T18:42:53+01:00",
+        "source": "F:\\py\\Bishe\\langchain-ollama-elasticsearch/data\\press-physics-nobel-prize-2024.pdf",
+        "total_pages": 2,
+        "page": 0,
+        "page_label": "1",
+        "similarity": 0.7120361
+      },
+      "raw_score": 0.7120361
+    }
+  ],
+  "answer": "你好！请问有什么问题我可以帮助你解答呢？",
+  "used_context": true
+}
