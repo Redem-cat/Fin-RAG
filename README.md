@@ -1,8 +1,11 @@
-# A simple RAG architecture using LangChain + Ollama + Elasticsearch
+# RAG Knowledge Base System using LangChain + Ollama + Elasticsearch
 
-This is a simple implementation of a classic Retrieval-augmented generation (RAG)
-architecture in Python using [LangChain](https://www.langchain.com/), [Ollama](https://ollama.com)
+A Retrieval-Augmented Generation (RAG) knowledge base system built with
+[LangChain](https://www.langchain.com/), [Ollama](https://ollama.com)
 and [Elasticsearch](https://github.com/elastic/elasticsearch).
+
+This project allows you to build intelligent Q&A systems by indexing documents
+and retrieving relevant context to generate accurate answers.
 
 ## Install Ollama
 
@@ -139,4 +142,6 @@ to answer to the question.
 
 ## Copyright
 
-Copyright (C) 2025 by [Enrico Zimuel](https://www.zimuel.it/).
+Copyright (C) 2026 by [Redem-cat](https://github.com/Redem-cat).
+
+This project is derived from the original work by Enrico Zimuel (Apache License).

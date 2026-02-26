@@ -1,5 +1,5 @@
-# Simple RAG architecture using LangChain, Ollama and Elasticsearch
-# by Enrico Zimuel (enrico@zimuel.it)
+# RAG architecture using LangChain, Ollama and Elasticsearch
+# Modified by Redem-cat
 
 import os
 from dotenv import load_dotenv
@@ -32,12 +32,12 @@ index_name="rag-langchain"
 
 # Embeddings
 embeddings = OllamaEmbeddings(
-    model="llama3.2:3b",
+    model="my-bge-m3",
 )
 
 vector_db  = ElasticsearchStore(
     es_url=os.getenv('ES_LOCAL_URL'),
-    es_api_key= os.getenv('ES_LOCAL_API_KEY'),
+
     embedding=embeddings,
     index_name=index_name
 )

@@ -1,5 +1,5 @@
 # Store PDF documents in Elasticsearch using Ollama embeddings
-# by Enrico Zimuel (enrico@zimuel.it)
+# Modified by Redem-cat
 
 import glob, os
 from dotenv import load_dotenv
@@ -26,12 +26,12 @@ index_name="rag-langchain"
 
 # Embeddings
 embeddings = OllamaEmbeddings(
-    model="llama3.2:3b",
+    model="my-bge-m3",
 )
 
 vector_db  = ElasticsearchStore(
     es_url=os.getenv('ES_LOCAL_URL'),
-    es_api_key= os.getenv('ES_LOCAL_API_KEY'),
+
     embedding=embeddings,
     index_name=index_name
 )
@@ -59,12 +59,7 @@ for file in glob.glob(f"{base_path}/data/*.pdf"):
 print(f"Storing chunks in Elasticsearch")
 for chunks in all_splits:
     # Index the chunks to Elasticsearch
-    vector_db.from_documents(
-        documents=chunks,
-        embedding=embeddings,
-        es_connection=vector_db.client,
-        index_name=index_name
-    )
+    vector_db.add_documents(chunks)
     chunks_size=len(chunks)
     print(f"Stored {chunks_size} chunks in {index_name} index")
 
