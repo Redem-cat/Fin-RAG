@@ -1,12 +1,14 @@
 """RAG 系统评估器 - 使用 RAGAS 框架进行批量评估"""
 
 import json
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
+from langchain_ollama import OllamaEmbeddings
 
 from ragas import EvaluationDataset
 from ragas import evaluate
@@ -26,17 +28,20 @@ class RAGEvaluator:
         self,
         rag_chain,
         model_name: str = "qwen2.5:7b",
+        embed_model: str = "bge-m3:latest",
         base_url: str = "http://localhost:11434"
     ):
         """初始化评估器
 
         Args:
             rag_chain: RAG 检索链
-            model_name: 使用的 Ollama 模型名称
+            model_name: 使用的 Ollama LLM 模型名称
+            embed_model: 使用的 Ollama Embedding 模型名称
             base_url: Ollama 服务地址
         """
         self.rag_chain = rag_chain
         self.llm = ChatOllama(model=model_name, base_url=base_url)
+        self.embeddings = OllamaEmbeddings(model=embed_model, base_url=base_url)
         self.eval_results = None
 
     def load_testset(self, testset_path: str) -> List[Dict[str, Any]]:
@@ -164,7 +169,7 @@ class RAGEvaluator:
             dataset=dataset,
             metrics=selected_metrics,
             llm=self.llm,
-            embeddings=None,  # RAGAS 会自动使用适当的嵌入
+            embeddings=self.embeddings,  # 使用本地 Ollama 嵌入模型
         )
 
         # 转换为 DataFrame

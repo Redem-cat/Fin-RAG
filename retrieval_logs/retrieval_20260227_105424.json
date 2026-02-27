@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-02-27T10:54:24.228426",
+  "question": "投资该基金的风险是什么？",
+  "retrieved_docs": [
+    {
+      "content": "Prize amount: 11 million Swedish kronor, to be shared equally between the laureates. \nFurther information: www.kva.se and www.nobelprize.org Press contact: Eva Nevelius, Press \nSecretary, +46 70 878 67 63, eva.nevelius@kva.se Experts: Olle Eriksson, +46 18 471 36 25, \nolle.eriksson@physics.uu.se and Anders Irbäck, +46 46 222 34 93, anders.irback@cec.lu.se, \nmembers of the Nobel Committee for Physics. \nThe Royal Swedish Academy of Sciences, founded in 1739, is an independent organisation whose \no",
+      "metadata": {
+        "producer": "LibreOffice 7.3",
+        "creator": "Writer",
+        "creationdate": "2025-02-24T18:42:53+01:00",
+        "source": "F:\\py\\Bishe\\langchain-ollama-elasticsearch/data\\press-physics-nobel-prize-2024.pdf",
+        "total_pages": 2,
+        "page": 1,
+        "page_label": "2",
+        "similarity": 0.7023293
+      },
+      "raw_score": 0.7023293
+    },
+    {
+      "content": "have low energy. When the Hopfield network is fed a distorted or incomplete image, it methodically\nworks through the nodes and updates their values so the network’s energy falls. The network thus \nworks stepwise to find the saved image that is most like the imperfect one it was fed with. \nGeoffrey Hinton used the Hopfield network as the foundation for a new network that uses a \ndifferent method: the Boltzmann machine. This can learn to recognise characteristic elements in a \ngiven type of data. ",
+      "metadata": {
+        "producer": "LibreOffice 7.3",
+        "creator": "Writer",
+        "creationdate": "2025-02-24T18:42:53+01:00",
+        "source": "F:\\py\\Bishe\\langchain-ollama-elasticsearch/data\\press-physics-nobel-prize-2024.pdf",
+        "total_pages": 2,
+        "page": 0,
+        "page_label": "1",
+        "similarity": 0.66855025
+      },
+      "raw_score": 0.66855025
+    },
+    {
+      "content": "arise when the machine is run. The Boltzmann machine can be used to classify images or create \nnew examples of the type of pattern on which it was trained. Hinton has built upon this work, \nhelping initiate the current explosive development of machine learning. “The laureates’ work has \nalready been of the greatest benefit. In physics we use artificial neural networks in a vast range of \nareas, such as developing new materials with specific properties,” says Ellen Moons, Chair of the \nNobel Comm",
+      "metadata": {
+        "producer": "LibreOffice 7.3",
+        "creator": "Writer",
+        "creationdate": "2025-02-24T18:42:53+01:00",
+        "source": "F:\\py\\Bishe\\langchain-ollama-elasticsearch/data\\press-physics-nobel-prize-2024.pdf",
+        "total_pages": 2,
+        "page": 0,
+        "page_label": "1",
+        "similarity": 0.66255337
+      },
+      "raw_score": 0.66255337
+    }
+  ],
+  "answer": "投资该基金可能面临市场风险、信用风险以及流动性风险。市场风险包括整体市场波动对基金价值的影响；信用风险涉及基金持有的债券或其他债务工具发行方违约的可能性；流动性风险则指在需要时无法迅速卖出资产以避免损失的风险。",
+  "used_context": true
+}

@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-02-27T10:54:21.716454",
+  "question": "基金的持仓风格是怎样的？",
+  "retrieved_docs": [
+    {
+      "content": "developing stronger connections between nodes with simultaneously high values. This year’s \nlaureates have conducted important work with artificial neural networks from the 1980s onward.\nJohn Hopfield invented a network that uses a method for saving and recreating patterns. We can \nimagine the nodes as pixels. The Hopfield network utilises physics that describes a material’s \ncharacteristics due to its atomic spin – a property that makes each atom a tiny magnet. The network \nas a whole is descri",
+      "metadata": {
+        "producer": "LibreOffice 7.3",
+        "creator": "Writer",
+        "creationdate": "2025-02-24T18:42:53+01:00",
+        "source": "F:\\py\\Bishe\\langchain-ollama-elasticsearch/data\\press-physics-nobel-prize-2024.pdf",
+        "total_pages": 2,
+        "page": 0,
+        "page_label": "1",
+        "similarity": 0.69320863
+      },
+      "raw_score": 0.69320863
+    },
+    {
+      "content": "have low energy. When the Hopfield network is fed a distorted or incomplete image, it methodically\nworks through the nodes and updates their values so the network’s energy falls. The network thus \nworks stepwise to find the saved image that is most like the imperfect one it was fed with. \nGeoffrey Hinton used the Hopfield network as the foundation for a new network that uses a \ndifferent method: the Boltzmann machine. This can learn to recognise characteristic elements in a \ngiven type of data. ",
+      "metadata": {
+        "producer": "LibreOffice 7.3",
+        "creator": "Writer",
+        "creationdate": "2025-02-24T18:42:53+01:00",
+        "source": "F:\\py\\Bishe\\langchain-ollama-elasticsearch/data\\press-physics-nobel-prize-2024.pdf",
+        "total_pages": 2,
+        "page": 0,
+        "page_label": "1",
+        "similarity": 0.69074714
+      },
+      "raw_score": 0.69074714
+    },
+    {
+      "content": "memory that can store and reconstruct images and other types of patterns in data. Geoffrey Hinton \ninvented a method that can autonomously find properties in data, and so perform tasks such as \nidentifying specific elements in pictures. When we talk about artificial intelligence, we often mean \nmachine learning using artificial neural networks. This technology was originally inspired by the \nstructure of the brain. In an artificial neural network, the brain’s neurons are represented by nodes \nth",
+      "metadata": {
+        "producer": "LibreOffice 7.3",
+        "creator": "Writer",
+        "creationdate": "2025-02-24T18:42:53+01:00",
+        "source": "F:\\py\\Bishe\\langchain-ollama-elasticsearch/data\\press-physics-nobel-prize-2024.pdf",
+        "total_pages": 2,
+        "page": 0,
+        "page_label": "1",
+        "similarity": 0.68911874
+      },
+      "raw_score": 0.68911874
+    }
+  ],
+  "answer": "基金的持仓风格通常反映了基金经理的投资理念和策略，可能包括价值投资、成长投资或平衡投资等多种类型。不同的持仓风格会根据市场情况进行调整，并影响基金的整体表现和风险水平。投资者在选择基金时应考虑自身的投资目标和风险承受能力。",
+  "used_context": false
+}

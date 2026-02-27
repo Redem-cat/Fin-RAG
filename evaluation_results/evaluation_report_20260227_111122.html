@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG 系统评估报告</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 30px;
+        }
+        .header {
+            text-align: center;
+            padding-bottom: 30px;
+            border-bottom: 2px solid #eee;
+        }
+        .header h1 {
+            color: #333;
+            margin: 0;
+            font-size: 2.5em;
+        }
+        .header p {
+            color: #666;
+            margin-top: 10px;
+        }
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        .score-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .score-card.score-good { border-left: 5px solid #28a745; }
+        .score-card.score-medium { border-left: 5px solid #ffc107; }
+        .score-card.score-poor { border-left: 5px solid #dc3545; }
+        .score-emoji { font-size: 2em; margin-bottom: 10px; }
+        .score-name { font-size: 0.9em; color: #666; margin-bottom: 5px; }
+        .score-value { font-size: 2em; font-weight: bold; color: #333; }
+        .chart-container {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+        }
+        .summary-card {
+            background: #e7f3ff;
+            border-left: 4px solid #007bff;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 30px 0;
+        }
+        .summary-card h3 {
+            margin-top: 0;
+            color: #0056b3;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+        }
+        tr:hover {
+            background: #f5f5f5;
+        }
+        details {
+            cursor: pointer;
+        }
+        details[open] > summary {
+            margin-bottom: 10px;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 2px solid #eee;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>RAG 系统评估报告</h1>
+            <p>使用 RAGAS 框架生成的 RAG 系统评估报告</p>
+        </div>
+
+        <div class="summary">
+            
+                    <div class="score-card score-poor">
+                        <div class="score-emoji">❌</div>
+                        <div class="score-name">faithfulness</div>
+                        <div class="score-value">nan</div>
+                    </div>
+                
+                    <div class="score-card score-poor">
+                        <div class="score-emoji">❌</div>
+                        <div class="score-name">context_precision</div>
+                        <div class="score-value">nan</div>
+                    </div>
+                
+                    <div class="score-card score-poor">
+                        <div class="score-emoji">❌</div>
+                        <div class="score-name">context_recall</div>
+                        <div class="score-value">0.000</div>
+                    </div>
+                
+        </div>
+
+        
+            <div class="summary-card">
+                <h3>评估概要</h3>
+                <ul>
+                    <li><b>测试集:</b> F:\py\Bishe\langchain-ollama-elasticsearch\src\testset.json</li>
+                    <li><b>测试问题数:</b> 5</li>
+                    <li><b>评估指标:</b> faithfulness, answer_relevance, context_precision, context_recall</li>
+                    <li><b>评估时间:</b> 2026-02-27T10:58:25.101466</li>
+                </ul>
+            </div>
+        
+
+        <div class="chart-grid">
+            <div class="chart-container">
+                <div>                        <script type="text/javascript">window.PlotlyConfig = {MathJaxConfig: 'local'};</script>
+        <script charset="utf-8" src="https://cdn.plot.ly/plotly-3.3.1.min.js" integrity="sha256-4rD3fugVb/nVJYUv5Ky3v+fYXoouHaBSP20WIJuEiWg=" crossorigin="anonymous"></script>                <div id="d2e01a1e-c0da-4b87-a887-823dbf56e7a5" class="plotly-graph-div" style="height:400px; width:100%;"></div>            <script type="text/javascript">                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("d2e01a1e-c0da-4b87-a887-823dbf56e7a5")) {                    Plotly.newPlot(                        "d2e01a1e-c0da-4b87-a887-823dbf56e7a5",                        [{"marker":{"color":["#A8D5E5","#FAD6A5","#B5E5CF"],"line":{"color":"#888888","width":1}},"x":["faithfulness","context_precision","context_recall"],"y":[null,null,0.0],"type":"bar"}],                        {"template":{"data":{"candlestick":[{"decreasing":{"line":{"color":"#000033"}},"increasing":{"line":{"color":"#000032"}},"type":"candlestick"}],"contourcarpet":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"contourcarpet"}],"contour":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"contour"}],"heatmap":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"heatmap"}],"histogram2d":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"histogram2d"}],"icicle":[{"textfont":{"color":"white"},"type":"icicle"}],"sankey":[{"textfont":{"color":"#000036"},"type":"sankey"}],"scatter":[{"marker":{"line":{"width":0}},"type":"scatter"}],"table":[{"cells":{"fill":{"color":"#000038"},"font":{"color":"#000037"},"line":{"color":"#000039"}},"header":{"fill":{"color":"#000040"},"font":{"color":"#000036"},"line":{"color":"#000039"}},"type":"table"}],"waterfall":[{"connector":{"line":{"color":"#000036","width":2}},"decreasing":{"marker":{"color":"#000033"}},"increasing":{"marker":{"color":"#000032"}},"totals":{"marker":{"color":"#000034"}},"type":"waterfall"}]},"layout":{"coloraxis":{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]]},"colorscale":{"diverging":[[0.0,"#000021"],[0.1111111111111111,"#000022"],[0.2222222222222222,"#000023"],[0.3333333333333333,"#000024"],[0.4444444444444444,"#000025"],[0.5555555555555556,"#000026"],[0.6666666666666666,"#000027"],[0.7777777777777778,"#000028"],[0.8888888888888888,"#000029"],[1.0,"#000030"]],"sequential":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"sequentialminus":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]]},"colorway":["#000001","#000002","#000003","#000004","#000005","#000006","#000007","#000008","#000009","#000010"]}},"yaxis":{"title":{"text":"分数 (0-1)"},"range":[0,1]},"title":{"text":"RAG 评估指标概览"},"xaxis":{"title":{"text":"指标"}},"height":400},                        {"responsive": true}                    )                };            </script>        </div>
+            </div>
+            <div class="chart-container">
+                <div>                        <script type="text/javascript">window.PlotlyConfig = {MathJaxConfig: 'local'};</script>
+        <script charset="utf-8" src="https://cdn.plot.ly/plotly-3.3.1.min.js" integrity="sha256-4rD3fugVb/nVJYUv5Ky3v+fYXoouHaBSP20WIJuEiWg=" crossorigin="anonymous"></script>                <div id="45ab2412-401e-45b2-a5bc-52f153248524" class="plotly-graph-div" style="height:500px; width:100%;"></div>            <script type="text/javascript">                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("45ab2412-401e-45b2-a5bc-52f153248524")) {                    Plotly.newPlot(                        "45ab2412-401e-45b2-a5bc-52f153248524",                        [{"boxmean":true,"line":{"color":"#888888"},"marker":{"color":"#A8D5E5"},"name":"faithfulness","y":{"dtype":"f8","bdata":"AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh\u002fAAAAAAAA+H8AAAAAAAD4fw=="},"type":"box"},{"boxmean":true,"line":{"color":"#888888"},"marker":{"color":"#FAD6A5"},"name":"answer_relevancy","y":{"dtype":"f8","bdata":"AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh\u002fAAAAAAAA+H8AAAAAAAD4fw=="},"type":"box"},{"boxmean":true,"line":{"color":"#888888"},"marker":{"color":"#B5E5CF"},"name":"context_precision","y":{"dtype":"f8","bdata":"AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh\u002fAAAAAAAA+H8AAAAAAAD4fw=="},"type":"box"},{"boxmean":true,"line":{"color":"#888888"},"marker":{"color":"#D4A5D9"},"name":"context_recall","y":{"dtype":"f8","bdata":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="},"type":"box"}],                        {"template":{"data":{"candlestick":[{"decreasing":{"line":{"color":"#000033"}},"increasing":{"line":{"color":"#000032"}},"type":"candlestick"}],"contourcarpet":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"contourcarpet"}],"contour":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"contour"}],"heatmap":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"heatmap"}],"histogram2d":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"histogram2d"}],"icicle":[{"textfont":{"color":"white"},"type":"icicle"}],"sankey":[{"textfont":{"color":"#000036"},"type":"sankey"}],"scatter":[{"marker":{"line":{"width":0}},"type":"scatter"}],"table":[{"cells":{"fill":{"color":"#000038"},"font":{"color":"#000037"},"line":{"color":"#000039"}},"header":{"fill":{"color":"#000040"},"font":{"color":"#000036"},"line":{"color":"#000039"}},"type":"table"}],"waterfall":[{"connector":{"line":{"color":"#000036","width":2}},"decreasing":{"marker":{"color":"#000033"}},"increasing":{"marker":{"color":"#000032"}},"totals":{"marker":{"color":"#000034"}},"type":"waterfall"}]},"layout":{"coloraxis":{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]]},"colorscale":{"diverging":[[0.0,"#000021"],[0.1111111111111111,"#000022"],[0.2222222222222222,"#000023"],[0.3333333333333333,"#000024"],[0.4444444444444444,"#000025"],[0.5555555555555556,"#000026"],[0.6666666666666666,"#000027"],[0.7777777777777778,"#000028"],[0.8888888888888888,"#000029"],[1.0,"#000030"]],"sequential":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"sequentialminus":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]]},"colorway":["#000001","#000002","#000003","#000004","#000005","#000006","#000007","#000008","#000009","#000010"]}},"title":{"text":"指标分布情况"},"yaxis":{"title":{"text":"分数"}},"height":500},                        {"responsive": true}                    )                };            </script>        </div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <div>                        <script type="text/javascript">window.PlotlyConfig = {MathJaxConfig: 'local'};</script>
+        <script charset="utf-8" src="https://cdn.plot.ly/plotly-3.3.1.min.js" integrity="sha256-4rD3fugVb/nVJYUv5Ky3v+fYXoouHaBSP20WIJuEiWg=" crossorigin="anonymous"></script>                <div id="67508697-4dc5-4d33-a519-3b9b82999276" class="plotly-graph-div" style="height:400px; width:100%;"></div>            <script type="text/javascript">                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("67508697-4dc5-4d33-a519-3b9b82999276")) {                    Plotly.newPlot(                        "67508697-4dc5-4d33-a519-3b9b82999276",                        [{"colorscale":[[0,"#E3F2FD"],[0.5,"#C8E6C9"],[1,"#FFF9C4"]],"x":["Q1","Q2","Q3","Q4","Q5"],"y":["faithfulness","answer_relevancy","context_precision","context_recall"],"z":{"dtype":"f8","bdata":"AAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh\u002fAAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh\u002fAAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh\u002fAAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh\u002fAAAAAAAA+H8AAAAAAAD4fwAAAAAAAPh\u002fAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==","shape":"4, 5"},"zmax":1,"zmid":0.5,"zmin":0,"type":"heatmap"}],                        {"template":{"data":{"candlestick":[{"decreasing":{"line":{"color":"#000033"}},"increasing":{"line":{"color":"#000032"}},"type":"candlestick"}],"contourcarpet":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"contourcarpet"}],"contour":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"contour"}],"heatmap":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"heatmap"}],"histogram2d":[{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"type":"histogram2d"}],"icicle":[{"textfont":{"color":"white"},"type":"icicle"}],"sankey":[{"textfont":{"color":"#000036"},"type":"sankey"}],"scatter":[{"marker":{"line":{"width":0}},"type":"scatter"}],"table":[{"cells":{"fill":{"color":"#000038"},"font":{"color":"#000037"},"line":{"color":"#000039"}},"header":{"fill":{"color":"#000040"},"font":{"color":"#000036"},"line":{"color":"#000039"}},"type":"table"}],"waterfall":[{"connector":{"line":{"color":"#000036","width":2}},"decreasing":{"marker":{"color":"#000033"}},"increasing":{"marker":{"color":"#000032"}},"totals":{"marker":{"color":"#000034"}},"type":"waterfall"}]},"layout":{"coloraxis":{"colorscale":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]]},"colorscale":{"diverging":[[0.0,"#000021"],[0.1111111111111111,"#000022"],[0.2222222222222222,"#000023"],[0.3333333333333333,"#000024"],[0.4444444444444444,"#000025"],[0.5555555555555556,"#000026"],[0.6666666666666666,"#000027"],[0.7777777777777778,"#000028"],[0.8888888888888888,"#000029"],[1.0,"#000030"]],"sequential":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]],"sequentialminus":[[0.0,"#000011"],[0.1111111111111111,"#000012"],[0.2222222222222222,"#000013"],[0.3333333333333333,"#000014"],[0.4444444444444444,"#000015"],[0.5555555555555556,"#000016"],[0.6666666666666666,"#000017"],[0.7777777777777778,"#000018"],[0.8888888888888888,"#000019"],[1.0,"#000020"]]},"colorway":["#000001","#000002","#000003","#000004","#000005","#000006","#000007","#000008","#000009","#000010"]}},"title":{"text":"问题级评分热力图"},"height":400},                        {"responsive": true}                    )                };            </script>        </div>
+        </div>
+
+        <h2>详细评估结果</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th width="5%">#</th>
+                    <th width="30%">问题</th>
+                    <th width="25%">指标评分</th>
+                    <th width="40%">模型答案</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+                <tr>
+                    <td>Q1</td>
+                    <td>华夏成长混合基金的基本信息是什么？...</td>
+                    <td><b>faithfulness:</b> nan<br><b>answer_relevancy:</b> nan<br><b>context_precision:</b> nan<br><b>context_recall:</b> 0.000</td>
+                    <td><details><summary>查看答案</summary><div style="white-space: pre-wrap;">华夏成长混合基金是一只由中国华夏基金管理有限公司管理的开放式基金，主要投资于具有成长潜力的股票和债券。该基金旨在通过投资组合的多样化来实现资本增值和收益增长。具体的基金代码、管理费率、托管费率等详细信息可以在基金公司的官方网站上查询到。</div></details></td>
+                </tr>
+            
+                <tr>
+                    <td>Q2</td>
+                    <td>该基金的基金经理是谁？...</td>
+                    <td><b>faithfulness:</b> nan<br><b>answer_relevancy:</b> nan<br><b>context_precision:</b> nan<br><b>context_recall:</b> 0.000</td>
+                    <td><details><summary>查看答案</summary><div style="white-space: pre-wrap;">关于您提到的基金，我没有具体信息来确定其基金经理是谁。如果您能提供更多的基金名称或相关信息，我可能能够帮助您找到答案。请注意，我的信息可能有时效限制，具体情况建议查询最新的官方公告或财务报告。</div></details></td>
+                </tr>
+            
+                <tr>
+                    <td>Q3</td>
+                    <td>基金的历史业绩表现如何？...</td>
+                    <td><b>faithfulness:</b> nan<br><b>answer_relevancy:</b> nan<br><b>context_precision:</b> nan<br><b>context_recall:</b> 0.000</td>
+                    <td><details><summary>查看答案</summary><div style="white-space: pre-wrap;">基金的历史业绩表现因基金类型和管理团队的不同而差异很大。一般来说，投资者可以通过查看基金的过往回报率、与基准指数的比较以及与其他类似基金的对比来评估其历史业绩。建议关注长期表现而非短期波动，以获得更准确的投资判断。</div></details></td>
+                </tr>
+            
+                <tr>
+                    <td>Q4</td>
+                    <td>基金的持仓风格是怎样的？...</td>
+                    <td><b>faithfulness:</b> nan<br><b>answer_relevancy:</b> nan<br><b>context_precision:</b> nan<br><b>context_recall:</b> 0.000</td>
+                    <td><details><summary>查看答案</summary><div style="white-space: pre-wrap;">基金的持仓风格通常反映了基金经理的投资理念和策略，可能包括价值投资、成长投资或平衡投资等多种类型。不同的持仓风格会根据市场情况进行调整，并影响基金的整体表现和风险水平。投资者在选择基金时应考虑自身的投资目标和风险承受能力。</div></details></td>
+                </tr>
+            
+                <tr>
+                    <td>Q5</td>
+                    <td>投资该基金的风险是什么？...</td>
+                    <td><b>faithfulness:</b> nan<br><b>answer_relevancy:</b> nan<br><b>context_precision:</b> nan<br><b>context_recall:</b> 0.000</td>
+                    <td><details><summary>查看答案</summary><div style="white-space: pre-wrap;">投资该基金可能面临市场风险、信用风险以及流动性风险。市场风险包括整体市场波动对基金价值的影响；信用风险涉及基金持有的债券或其他债务工具发行方违约的可能性；流动性风险则指在需要时无法迅速卖出资产以避免损失的风险。</div></details></td>
+                </tr>
+            
+            </tbody>
+        </table>
+
+        <div class="footer">
+            <p>报告生成时间: 2026-02-27 11:11:22</p>
+        </div>
+    </div>
+</body>
+</html>

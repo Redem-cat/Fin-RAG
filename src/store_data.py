@@ -42,9 +42,9 @@ vector_db = ElasticsearchStore(
 # =========================
 res = vector_db.client.indices.exists(index=index_name)
 if res.body:
-    print(f"索引 {index_name} 已存在于 Elasticsearch")
-    print("如需重新导入，请先删除索引或重建")
-    exit(0)
+    print(f"索引 {index_name} 已存在，正在删除旧索引...")
+    vector_db.client.indices.delete(index=index_name)
+    print(f"旧索引已删除")
 
 # =========================
 # 🔹 处理文档
@@ -56,29 +56,40 @@ text_splitter = RecursiveCharacterTextSplitter(
     separators=["\n\n", "\n", "。", "！", "？", "；", "：", "，", "、", " ", ""]
 )
 
-# Read the PDF files and split into chunks
+# Read the PDF and Markdown files and split into chunks
 converter = DocumentConverter()
 all_splits = []
 
+# 处理 PDF 文件
 for file in glob.glob(f"{base_path}/data/*.pdf"):
-    # 使用 Docling 加载 PDF
     print(f"Reading {file}")
     docling_doc = converter.convert(file)
 
-    # 转换为 LangChain Document 格式
     pages = len(docling_doc.pages) if hasattr(docling_doc, 'pages') else 1
     print(f"Read {file} with {pages} pages")
 
-    # Docling 提供的 markdown 内容
     markdown_text = docling_doc.export_to_markdown()
-
-    # 创建 Document 对象
     doc = Document(
         page_content=markdown_text,
         metadata={"source": file, "file_type": "pdf"}
     )
 
-    # 分块
+    chunks = text_splitter.split_documents([doc])
+    num_chunks = len(chunks)
+    print(f"Splitted in {num_chunks} chunks")
+    all_splits.append(chunks)
+
+# 处理 Markdown 文件
+for file in glob.glob(f"{base_path}/data/*.md"):
+    print(f"Reading {file}")
+    with open(file, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    doc = Document(
+        page_content=content,
+        metadata={"source": file, "file_type": "markdown"}
+    )
+
     chunks = text_splitter.split_documents([doc])
     num_chunks = len(chunks)
     print(f"Splitted in {num_chunks} chunks")

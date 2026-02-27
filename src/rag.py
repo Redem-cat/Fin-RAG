@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 import json
+import re
 
 import numpy as np
 from dotenv import load_dotenv
@@ -16,6 +17,14 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.documents import Document
 from langgraph.graph import START, StateGraph
 from typing_extensions import List, TypedDict
+
+# 导入合规审查模块
+import sys
+from pathlib import Path
+_compliance_checker_path = str(Path(__file__).parent)
+if _compliance_checker_path not in sys.path:
+    sys.path.insert(0, _compliance_checker_path)
+from compliance_checker import ComplianceChecker, quick_check
 
 # =========================
 # 🔹 检索日志管理器
@@ -104,6 +113,15 @@ embeddings = OllamaEmbeddings(
 
 # LLM
 llm = ChatOllama(model="my-qwen25", temperature=0.0000000001)
+
+# 合规审查器（使用 DeepSeek API）
+try:
+    compliance_checker = ComplianceChecker()
+    COMPLIANCE_ENABLED = True
+except Exception as e:
+    print(f"警告: 合规审查器初始化失败: {e}")
+    COMPLIANCE_ENABLED = False
+    compliance_checker = None
 
 
 # =========================
@@ -564,12 +582,72 @@ def ask_question(question: str, top_k: int = 3):
     # 根据 sources 是否为空判断是否使用了检索结果
     used_context = len(sources) > 0
 
+    # =========================
+    # 🔹 合规审查
+    # =========================
+    compliance_result = None
+    answer_with_compliance = response["answer"]
+
+    if COMPLIANCE_ENABLED and compliance_checker:
+        try:
+            # 提取产品信息（从sources中获取）
+            product_info = "未知基金产品"
+            if sources:
+                source_names = set(s.get("source", "") for s in sources)
+                if source_names:
+                    # 提取文件名作为产品名
+                    product_names = [Path(s).stem for s in source_names if s != "unknown"]
+                    if product_names:
+                        product_info = ", ".join(product_names)
+
+            # 调用合规审查
+            compliance_result = compliance_checker.check(
+                question=question,
+                answer=response["answer"],
+                product_info=product_info
+            )
+
+            # 在答案末尾添加合规标识
+            compliance_tag = _build_compliance_tag(compliance_result)
+            answer_with_compliance = response["answer"] + compliance_tag
+
+        except Exception as e:
+            print(f"合规审查出错: {e}")
+            compliance_result = {
+                "is_compliant": None,
+                "risk_level": "unknown",
+                "violations": [],
+                "summary": f"合规审查失败: {str(e)}"
+            }
+
     return {
         "question": question,
-        "answer": response["answer"],
+        "answer": answer_with_compliance,
         "source": sources,
-        "used_context": used_context
+        "used_context": used_context,
+        "compliance": compliance_result
     }
+
+
+def _build_compliance_tag(compliance_result: dict) -> str:
+    """构建合规标识"""
+    if not compliance_result:
+        return ""
+
+    is_compliant = compliance_result.get("is_compliant")
+    risk_level = compliance_result.get("risk_level", "unknown")
+    summary = compliance_result.get("summary", "")
+
+    if is_compliant is True:
+        tag = "\n\n---\n✅ **合规审查通过** | 风险等级: low"
+    elif is_compliant is False:
+        tag = f"\n\n---\n⚠️ **合规审查未通过** | 风险等级: {risk_level}"
+        if summary:
+            tag += f"\n📋 审查意见: {summary}"
+    else:
+        tag = "\n\n---\n❓ **合规审查状态未知**"
+
+    return tag
 
 
 def clear_conversation_history():

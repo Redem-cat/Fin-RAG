@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-02-26T18:18:24.216849",
-  "question": "你好",
+  "timestamp": "2026-02-27T11:19:51.800229",
+  "question": "华夏成长混合基金的基本信息是什么？",
   "retrieved_docs": [
     {
       "content": "Prize amount: 11 million Swedish kronor, to be shared equally between the laureates. \nFurther information: www.kva.se and www.nobelprize.org Press contact: Eva Nevelius, Press \nSecretary, +46 70 878 67 63, eva.nevelius@kva.se Experts: Olle Eriksson, +46 18 471 36 25, \nolle.eriksson@physics.uu.se and Anders Irbäck, +46 46 222 34 93, anders.irback@cec.lu.se, \nmembers of the Nobel Committee for Physics. \nThe Royal Swedish Academy of Sciences, founded in 1739, is an independent organisation whose \no",
@@ -12,12 +12,12 @@
         "total_pages": 2,
         "page": 1,
         "page_label": "2",
-        "similarity": 0.74747646
+        "similarity": 0.6710577
       },
-      "raw_score": 0.74747646
+      "raw_score": 0.6710577
     },
     {
-      "content": "arise when the machine is run. The Boltzmann machine can be used to classify images or create \nnew examples of the type of pattern on which it was trained. Hinton has built upon this work, \nhelping initiate the current explosive development of machine learning. “The laureates’ work has \nalready been of the greatest benefit. In physics we use artificial neural networks in a vast range of \nareas, such as developing new materials with specific properties,” says Ellen Moons, Chair of the \nNobel Comm",
+      "content": "developing stronger connections between nodes with simultaneously high values. This year’s \nlaureates have conducted important work with artificial neural networks from the 1980s onward.\nJohn Hopfield invented a network that uses a method for saving and recreating patterns. We can \nimagine the nodes as pixels. The Hopfield network utilises physics that describes a material’s \ncharacteristics due to its atomic spin – a property that makes each atom a tiny magnet. The network \nas a whole is descri",
       "metadata": {
         "producer": "LibreOffice 7.3",
         "creator": "Writer",
@@ -26,9 +26,9 @@
         "total_pages": 2,
         "page": 0,
         "page_label": "1",
-        "similarity": 0.714269
+        "similarity": 0.66864204
       },
-      "raw_score": 0.714269
+      "raw_score": 0.66864204
     },
     {
       "content": "have low energy. When the Hopfield network is fed a distorted or incomplete image, it methodically\nworks through the nodes and updates their values so the network’s energy falls. The network thus \nworks stepwise to find the saved image that is most like the imperfect one it was fed with. \nGeoffrey Hinton used the Hopfield network as the foundation for a new network that uses a \ndifferent method: the Boltzmann machine. This can learn to recognise characteristic elements in a \ngiven type of data. ",
@@ -40,11 +40,11 @@
         "total_pages": 2,
         "page": 0,
         "page_label": "1",
-        "similarity": 0.7120361
+        "similarity": 0.66694844
       },
-      "raw_score": 0.7120361
+      "raw_score": 0.66694844
     }
   ],
-  "answer": "你好！很高兴与你交流。有什么问题可以问我哦。",
-  "used_context": true
+  "answer": "华夏成长混合基金是一只由中国华夏基金管理有限公司管理的开放式基金，主要投资于具有成长潜力的股票和债券。该基金旨在通过投资组合的多样化来实现资本增值和收益增长。具体的基金代码、管理费率、托管费率等详细信息可以在基金公司的官方网站上查询到。",
+  "used_context": false
 }

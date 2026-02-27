@@ -1,0 +1,67 @@
+{
+  "testset_path": "F:\\py\\Bishe\\langchain-ollama-elasticsearch\\src\\testset.json",
+  "metrics": [
+    "faithfulness",
+    "answer_relevance",
+    "context_precision",
+    "context_recall"
+  ],
+  "scores": [
+    {
+      "user_input": "华夏成长混合基金的基本信息是什么？",
+      "retrieved_contexts": [],
+      "response": "",
+      "reference": "华夏成长混合基金是一只开放式基金，基金代码为000001，成立于2001年，主要投资于具有成长性的股票。",
+      "faithfulness": NaN,
+      "answer_relevancy": NaN,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "该基金的基金经理是谁？",
+      "retrieved_contexts": [],
+      "response": "",
+      "reference": "华夏成长混合基金的基金经理是张三，具有10年以上基金管理经验。",
+      "faithfulness": NaN,
+      "answer_relevancy": NaN,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "基金的历史业绩表现如何？",
+      "retrieved_contexts": [],
+      "response": "",
+      "reference": "该基金近三年累计收益率为35%，同类排名前20%。",
+      "faithfulness": 0.0,
+      "answer_relevancy": NaN,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "基金的持仓风格是怎样的？",
+      "retrieved_contexts": [],
+      "response": "",
+      "reference": "该基金主要投资于科技、消费等成长性行业，股票仓位通常在70%-90%之间。",
+      "faithfulness": NaN,
+      "answer_relevancy": NaN,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "投资该基金的风险是什么？",
+      "retrieved_contexts": [],
+      "response": "",
+      "reference": "主要风险包括市场波动风险、行业集中度风险、基金净值波动风险等。投资者需根据自身风险承受能力谨慎投资。",
+      "faithfulness": 0.0,
+      "answer_relevancy": NaN,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    }
+  ],
+  "summary": {
+    "faithfulness": 0.0,
+    "context_precision": 0.0,
+    "context_recall": 0.0
+  },
+  "timestamp": "2026-02-27T11:22:54.995092"
+}
