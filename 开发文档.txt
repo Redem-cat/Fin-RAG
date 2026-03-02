@@ -71,4 +71,78 @@ FinRAG-Advisor 基于多模态知识图谱增强的智能投顾与合规双模 R
 ## 5. 前端集成（src/streamlit_app.py）
 - 登录后自动检测是否需要引导
 - 引导消息显示在对话框中
-- 用户回复通过正常聊天输入框处理 
+- 用户回复通过正常聊天输入框处理
+
+--------------------------------------------------------------------------------
+# Streamlit 进程管理问题（2026-03-02）
+--------------------------------------------------------------------------------
+
+## 问题描述
+刷新页面或切换 CHAT/EVAL 时，Ollama 和 Elasticsearch 连接没有正确关闭，导致：
+1. 旧进程堆积，占用端口和内存
+2. 应用卡住无法响应
+3. 需要手动杀掉进程才能恢复
+
+## 根本原因
+1. Ollama 的 HTTP 连接池没有正确关闭
+2. Elasticsearch 连接没有正确释放
+3. LangChain/Ollama 库的连接管理机制不完善
+4. Streamlit 的页面刷新机制（重新执行全部代码）与全局状态冲突
+
+## 当前尝试方案（效果不佳）
+1. 在 `src/rag.py` 中添加 `cleanup_resources()` 函数
+   - 关闭 Elasticsearch 连接
+   - 清理 Ollama 客户端
+   - 重置全局变量
+
+2. 在 `src/streamlit_app.py` 中添加页面切换清理逻辑
+   - 跟踪当前页面状态
+   - 检测页面切换时调用 `cleanup_resources()`
+
+**结果：** 效果不明显，资源泄漏仍然存在
+
+## 待解决的方案（按优先级）
+### 方案1：强制重启（最彻底）
+- 页面刷新时自动杀掉所有相关进程（Python、Ollama、Streamlit）
+- 使用子进程启动并监控，检测到刷新时 kill 并重启
+- **优点**：彻底清理，100% 有效
+- **缺点**：用户体验差，会有短暂黑屏
+
+### 方案2：独立服务架构
+- 将 RAG 核心逻辑移到独立的 FastAPI 服务
+- Streamlit 只做前端 UI，通过 HTTP API 调用
+- 后台服务独立运行，不受 Streamlit 刷新影响
+- **优点**：架构清晰，稳定性高
+- **缺点**：需要重构，增加部署复杂度
+
+### 方案3：使用 Streamlit Experimental Features
+- 使用 `@st.experimental_singleton` 缓存全局连接
+- 使用 `st.runtime.scriptrunner` 的生命周期钩子
+- **优点**：无需重构，官方方案
+- **缺点**：实验性功能，可能不稳定
+
+### 方案4：连接池管理优化
+- 为 Ollama 和 Elasticsearch 添加显式连接池
+- 使用 `with` 上下文管理器确保资源释放
+- 添加超时和健康检查
+- **优点**：侵入性小
+- **缺点**：治标不治本
+
+## 相关文件
+- `src/rag.py` - `cleanup_resources()` 函数（第132-186行）
+- `src/streamlit_app.py` - `main()` 中的页面切换清理逻辑
+
+## 进程检查命令（Windows）
+```powershell
+# 查看相关进程
+tasklist | findstr -i "ollama python streamlit"
+
+# 杀掉进程（需要手动执行）
+taskkill /F /IM ollama.exe /T
+taskkill /F /IM python.exe /T
+```
+
+## 当前状态
+- **优先级：高**
+- **状态：待解决**
+- **建议：** 优先尝试方案2（独立服务架构） 

@@ -140,7 +140,7 @@ def _get_embeddings():
     print("正在加载 Embeddings 模型...")
     embeddings = OllamaEmbeddings(model="my-bge-m3")
     _loaded["embeddings"] = True
-    print("✅ Embeddings 加载完成")
+    print("[OK] Embeddings 加载完成")
     return embeddings
 
 
@@ -152,7 +152,7 @@ def _get_llm():
     print("正在加载 LLM 模型...")
     llm = ChatOllama(model="my-qwen25", temperature=0.0000000001)
     _loaded["llm"] = True
-    print("✅ LLM 加载完成")
+    print("[OK] LLM 加载完成")
     return llm
 
 
@@ -169,7 +169,7 @@ def _get_vector_db():
         index_name=index_name
     )
     _loaded["vector_db"] = True
-    print("✅ Elasticsearch 连接完成")
+    print("[OK] Elasticsearch 连接完成")
     return vector_db
 
 
@@ -210,9 +210,9 @@ def _get_reranker():
     try:
         print(f"正在加载精排模型: {RERANKER_MODEL} ...")
         reranker = CrossEncoder(RERANKER_MODEL, max_length=1024)
-        print("✅ 精排模型加载成功")
+        print("[OK] 精排模型加载成功")
     except Exception as e:
-        print(f"⚠️ 精排模型加载失败: {e}")
+        print(f"[WARN] 精排模型加载失败: {e}")
         reranker = None
     
     reranker_loaded = True
@@ -868,7 +868,7 @@ def ask_question(question: str, top_k: int = 3, user_name: str = None) -> dict:
         if not hasattr(_get_compliance, 'instance'):
             _get_compliance.instance = ComplianceChecker()
         checker = _get_compliance.instance
-        
+
         if checker:
             try:
                 # 提取产品信息（从sources中获取）
@@ -899,8 +899,24 @@ def ask_question(question: str, top_k: int = 3, user_name: str = None) -> dict:
                     "violations": [],
                     "summary": f"合规审查失败: {str(e)}"
                 }
+
+    except ValueError as e:
+        # API Key 未配置
+        print(f"[WARN] {e}")
+        compliance_result = {
+            "is_compliant": None,
+            "risk_level": "unknown",
+            "violations": [],
+            "summary": "合规审查未配置"
+        }
     except Exception as e:
         print(f"合规审查初始化失败: {e}")
+        compliance_result = {
+            "is_compliant": None,
+            "risk_level": "unknown",
+            "violations": [],
+            "summary": f"合规审查异常: {str(e)}"
+        }
 
     # 添加用户称呼（如果有）
     final_answer = answer_with_compliance
@@ -993,6 +1009,137 @@ def _build_compliance_tag(compliance_result: dict) -> str:
     else:
         tag = ""
     return tag
+
+
+def ask_question_stream(question: str, top_k: int, user_name: str = None):
+    """
+    流式版本的 ask_question
+    返回生成器，逐步输出回答
+    """
+    # 1. 意图识别和检索（阻塞部分，快速完成）
+    graph = _get_rag_graph()
+
+    # 执行检索
+    response = graph.invoke({"question": question, "top_k": top_k})
+
+    # 整理结果（处理带分数的文档）
+    sources = []
+    context_items = response.get("context", [])
+
+    # 提取所有分数
+    all_scores = []
+    for item in context_items:
+        if isinstance(item, tuple):
+            _, score = item
+            all_scores.append(score)
+
+    # 判断是距离还是相似度
+    has_scores = bool(all_scores)
+    is_distance = False
+    if has_scores:
+        max_score_val = max(all_scores)
+        is_distance = max_score_val > 1.0
+
+    DOC_SIMILARITY_THRESHOLD = 0.75
+
+    for item in context_items:
+        if isinstance(item, tuple):
+            doc, score = item
+            if has_scores:
+                if is_distance:
+                    normalized_score = 1.0 / (1.0 + score)
+                else:
+                    normalized_score = score
+            else:
+                normalized_score = 0.5
+
+            if normalized_score >= DOC_SIMILARITY_THRESHOLD:
+                sources.append({
+                    "content": doc.page_content,
+                    "source": doc.metadata.get("source", "unknown"),
+                    "page": doc.metadata.get("page_label", "unknown"),
+                    "similarity": normalized_score
+                })
+
+    used_context = len(sources) > 0
+
+    # 获取意图信息
+    intent = response.get("intent", "unknown")
+    intent_reason = response.get("intent_reason", "")
+
+    # 2. 合规审查（阻塞部分）
+    compliance_result = None
+    from src.compliance_checker import ComplianceChecker
+    try:
+        if not hasattr(_get_compliance, 'instance'):
+            _get_compliance.instance = ComplianceChecker()
+        checker = _get_compliance.instance
+
+        if checker:
+            product_info = "未知基金产品"
+            if sources:
+                source_names = set(s.get("source", "") for s in sources)
+                if source_names:
+                    product_names = [Path(s).stem for s in source_names if s != "unknown"]
+                    if product_names:
+                        product_info = ", ".join(product_names)
+
+            compliance_result = checker.check(
+                question=question,
+                answer=response["answer"],
+                product_info=product_info
+            )
+
+    except ValueError as e:
+        print(f"[WARN] {e}")
+        compliance_result = {
+            "is_compliant": None,
+            "risk_level": "unknown",
+            "violations": [],
+            "summary": "合规审查未配置"
+        }
+    except Exception as e:
+        print(f"合规审查初始化失败: {e}")
+        compliance_result = {
+            "is_compliant": None,
+            "risk_level": "unknown",
+            "violations": [],
+            "summary": f"合规审查异常: {str(e)}"
+        }
+
+    # 构建完整答案
+    answer_with_compliance = response["answer"]
+    if compliance_result:
+        compliance_tag = _build_compliance_tag(compliance_result)
+        answer_with_compliance = response["answer"] + compliance_tag
+
+    # 添加用户称呼（如果有）
+    final_answer = answer_with_compliance
+    if user_name:
+        final_answer = f"{user_name}，{answer_with_compliance}"
+
+    # 3. 流式输出答案
+    # 先输出检索信息（如果有）
+    if used_context:
+        yield {"type": "sources", "data": sources}
+
+    # 分字符流式输出答案
+    for i in range(len(final_answer)):
+        yield {"type": "content", "data": final_answer[:i+1]}
+
+    # 完成后返回完整结果
+    yield {
+        "type": "complete",
+        "data": {
+            "question": question,
+            "answer": final_answer,
+            "source": sources,
+            "used_context": used_context,
+            "compliance": compliance_result,
+            "intent": intent,
+            "intent_reason": intent_reason
+        }
+    }
 
 
 def clear_conversation_history():
