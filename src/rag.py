@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import json
 import re
+from functools import lru_cache
 
 import numpy as np
 from dotenv import load_dotenv
@@ -18,13 +19,13 @@ from langchain_core.documents import Document
 from langgraph.graph import START, StateGraph
 from typing_extensions import List, TypedDict
 
-# 导入合规审查模块
-import sys
-from pathlib import Path
-_compliance_checker_path = str(Path(__file__).parent)
-if _compliance_checker_path not in sys.path:
-    sys.path.insert(0, _compliance_checker_path)
-from compliance_checker import ComplianceChecker, quick_check
+# 尝试导入 reranker（可选依赖）
+try:
+    from sentence_transformers import CrossEncoder
+    RERANKER_AVAILABLE = True
+except ImportError:
+    RERANKER_AVAILABLE = False
+    print("警告: sentence-transformers 未安装，精排功能不可用")
 
 # =========================
 # 🔹 检索日志管理器
@@ -106,10 +107,156 @@ if not dotenv_path.is_file():
 load_dotenv(dotenv_path=dotenv_path)
 index_name = "rag-langchain"
 
-# Embeddings
-embeddings = OllamaEmbeddings(
-    model="my-bge-m3",
-)
+# =========================
+# 🔹 延迟加载组件
+# =========================
+# 这些组件在首次使用时才初始化，避免启动慢
+embeddings = None
+llm = None
+vector_db = None
+compliance_checker = None
+COMPLIANCE_ENABLED = False
+memory_manager = None
+retrieval_logger = None
+
+_loaded = {
+    "embeddings": False,
+    "llm": False,
+    "vector_db": False,
+    "memory": False,
+}
+
+
+def warm_up():
+    """空函数，保持接口兼容"""
+    pass
+
+
+def _get_embeddings():
+    """延迟加载 Embeddings"""
+    global embeddings, _loaded
+    if _loaded["embeddings"]:
+        return embeddings
+    print("正在加载 Embeddings 模型...")
+    embeddings = OllamaEmbeddings(model="my-bge-m3")
+    _loaded["embeddings"] = True
+    print("✅ Embeddings 加载完成")
+    return embeddings
+
+
+def _get_llm():
+    """延迟加载 LLM"""
+    global llm, _loaded
+    if _loaded["llm"]:
+        return llm
+    print("正在加载 LLM 模型...")
+    llm = ChatOllama(model="my-qwen25", temperature=0.0000000001)
+    _loaded["llm"] = True
+    print("✅ LLM 加载完成")
+    return llm
+
+
+def _get_vector_db():
+    """延迟加载 Vector DB"""
+    global vector_db, _loaded
+    if _loaded["vector_db"]:
+        return vector_db
+    print("正在连接 Elasticsearch...")
+    emb = _get_embeddings()
+    vector_db = ElasticsearchStore(
+        es_url=os.getenv('ES_LOCAL_URL'),
+        embedding=emb,
+        index_name=index_name
+    )
+    _loaded["vector_db"] = True
+    print("✅ Elasticsearch 连接完成")
+    return vector_db
+
+
+def _get_memory_manager():
+    """延迟加载 Memory Manager"""
+    global memory_manager, _loaded
+    if _loaded["memory"]:
+        return memory_manager
+    memory_manager = MemoryManager()
+    _loaded["memory"] = True
+    return memory_manager
+
+
+# 合规审查器单例
+_get_compliance = type('_GetCompliance', (), {'instance': None})()
+
+
+# =========================
+# 🔹 精排模型（延迟加载）
+# =========================
+RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
+reranker = None
+reranker_loaded = False
+RERANKER_ENABLED = True  # 默认启用精排
+RERANK_CANDIDATE_COUNT = 10  # 召回候选数量（精排前）
+
+
+def _get_reranker():
+    """延迟加载精排模型"""
+    global reranker, reranker_loaded
+    if reranker_loaded:
+        return reranker
+    
+    if not RERANKER_AVAILABLE:
+        reranker_loaded = True
+        return None
+    
+    try:
+        print(f"正在加载精排模型: {RERANKER_MODEL} ...")
+        reranker = CrossEncoder(RERANKER_MODEL, max_length=1024)
+        print("✅ 精排模型加载成功")
+    except Exception as e:
+        print(f"⚠️ 精排模型加载失败: {e}")
+        reranker = None
+    
+    reranker_loaded = True
+    return reranker
+
+
+def rerank_documents(query: str, documents: List[Document], top_k: int = 3) -> List[tuple]:
+    """
+    使用 BGE-reranker 对文档进行重排（延迟加载）
+    
+    Args:
+        query: 用户查询
+        documents: 待重排的文档列表
+        top_k: 返回重排后的 top_k 个文档
+        
+    Returns:
+        List[tuple]: 重排后的文档列表 (doc, score)
+    """
+    # 延迟加载 reranker
+    current_reranker = _get_reranker()
+    
+    if not current_reranker or not documents:
+        # 如果没有 reranker，直接返回原始文档
+        return [(doc, 1.0) for doc in documents[:top_k]]
+    
+    # 准备 query-doc 对
+    pairs = [[query, doc.page_content] for doc in documents]
+    
+    # 获取重排分数
+    try:
+        scores = current_reranker.predict(pairs)
+        
+        # 将文档和分数配对
+        doc_scores = list(zip(documents, scores))
+        
+        # 按分数降序排序
+        doc_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        # 返回 top_k
+        return doc_scores[:top_k]
+    except Exception as e:
+        print(f"精排预测失败: {e}")
+        return [(doc, 1.0) for doc in documents[:top_k]]
+
 
 # LLM
 llm = ChatOllama(model="my-qwen25", temperature=0.0000000001)
@@ -384,15 +531,39 @@ class State(TypedDict):
 
 # 定义应用步骤
 def retrieve(state: State):
-    """检索相关文档和对话历史"""
-    # 检索文档（带相似度分数），使用传入的 top_k
+    """检索相关文档和对话历史（包含精排）"""
     top_k = state.get("top_k", 3)
-    retrieved_docs_with_scores = vector_db.similarity_search_with_score(state["question"], k=top_k)
+    question = state["question"]
+    
+    # 延迟加载组件
+    vdb = _get_vector_db()
+    memory = _get_memory_manager()
+    
+    # 步骤1: 向量检索召回候选文档
+    # 召回更多候选，用于精排
+    candidate_count = max(RERANK_CANDIDATE_COUNT, top_k * 3)
+    retrieved_docs_with_scores = vdb.similarity_search_with_score(question, k=candidate_count)
+    
+    # 提取文档（不区分原始分数）
+    retrieved_docs = []
+    for item in retrieved_docs_with_scores:
+        if isinstance(item, tuple):
+            doc, _ = item
+            retrieved_docs.append(doc)
+        else:
+            retrieved_docs.append(item)
+    
+    # 步骤2: 精排（如启用且可用）
+    if RERANKER_ENABLED and reranker and retrieved_docs:
+        reranked_docs = rerank_documents(question, retrieved_docs, top_k=top_k)
+    else:
+        # 如果没有精排，直接使用原始结果
+        reranked_docs = [(doc, 1.0) for doc in retrieved_docs[:top_k]]
     
     # 检索相关对话历史
-    relevant_history = memory_manager.retrieve_relevant_history(state["question"], top_k=3)
+    relevant_history = memory.retrieve_relevant_history(question, top_k=3)
     
-    return {"context": retrieved_docs_with_scores, "history": relevant_history}
+    return {"context": reranked_docs, "history": relevant_history}
 
 
 def generate(state: State):
@@ -400,6 +571,25 @@ def generate(state: State):
     # 阈值设置：文档相似度阈值和整体意图判断阈值
     DOC_SIMILARITY_THRESHOLD = 0.75
     INTENT_SIMILARITY_THRESHOLD = 0.7
+    
+    # =========================
+    # 🔹 金融数据自动补充（触发式）
+    # =========================
+    finance_context = ""
+    question = state["question"]
+    
+    # 延迟加载金融触发器
+    try:
+        from src.finance_trigger import get_finance_trigger
+        finance_trigger = get_finance_trigger()
+        
+        # 检查是否需要补充金融数据
+        if finance_trigger.is_finance_related(question):
+            finance_context, finance_sources = finance_trigger.get_finance_context(question)
+            if finance_context:
+                print(f"[金融数据] 检测到金融相关问题，补充数据: {finance_sources}")
+    except Exception as e:
+        print(f"金融数据模块加载失败: {e}")
 
     # 处理带分数的文档（(doc, score) 元组列表），过滤低相似度
     context_docs = []
@@ -463,11 +653,46 @@ def generate(state: State):
 
     history = state.get("history", "") or "No previous conversation."
 
+    # 合并上下文：文档检索 + 金融数据
+    if finance_context:
+        if docs_content:
+            combined_context = docs_content + "\n\n" + finance_context
+        else:
+            combined_context = finance_context
+    else:
+        combined_context = docs_content
+
     # 根据是否使用上下文调整提示词
     if use_retrieved_context and docs_content:
         prompt = prompt_template.format(
             question=state["question"],
-            context=docs_content,
+            context=combined_context,
+            history=history
+        )
+    elif finance_context:
+        # 没有文档检索结果，但有金融数据
+        finance_prompt_template = PromptTemplate.from_template(
+            template="""Previous conversation:
+{history}
+
+[FINANCE DATA START]
+{finance_context}
+[FINANCE DATA END]
+
+[USER QUESTION START]
+{question}
+[USER QUESTION END]
+
+Instructions:
+1. The text above in [FINANCE DATA START]...[FINANCE DATA END] contains real-time financial data.
+2. Use the financial data to answer the question when relevant.
+3. Answer based on your own knowledge if the financial data is not sufficient.
+4. CRITICAL: Answer in the SAME LANGUAGE as the user's question.
+5. Write only three sentences."""
+        )
+        prompt = finance_prompt_template.format(
+            question=state["question"],
+            finance_context=finance_context,
             history=history
         )
     else:
@@ -491,10 +716,13 @@ Instructions:
             history=history
         )
 
-    response = llm.invoke(prompt)
+    # 延迟加载 LLM
+    llm_model = _get_llm()
+    response = llm_model.invoke(prompt)
 
-    # 记录到检索日志
-    retrieval_logger.log(
+    # 记录到检索日志（延迟加载）
+    logger = RetrievalLogger(max_log_files=10)
+    logger.log(
         question=state["question"],
         retrieved_docs=context_items,
         answer=response.content,
@@ -519,20 +747,60 @@ graph = graph_builder.compile()
 def ask_question(question: str, top_k: int = 3):
     """
     问答函数，供 Web 界面调用
+    
+    意图分支逻辑：
+    - INVESTMENT（投资顾问）→ 主要使用金融数据 + RAG
+    - POLICY（政策咨询）→ 主要使用RAG文档检索
+    - MIXED → 两者都使用
+    - GENERAL → 两者都尝试
 
     Args:
         question: 用户问题
         top_k: 返回的文档数量
 
     Returns:
-        dict: 包含 answer, source, question, used_context
+        dict: 包含 answer, source, question, used_context, intent
     """
-    # 调用图，传递 top_k 参数
+    # =========================
+    # 🔹 步骤1: 意图分类
+    # =========================
+    intent = "general"
+    intent_reason = ""
+    
+    try:
+        from src.intent_classifier import get_intent_classifier, Intent
+        classifier = get_intent_classifier()
+        intent_obj, intent_reason = classifier.classify(question)
+        intent = intent_obj.value
+        print(f"[意图分类] {intent} - {intent_reason}")
+    except Exception as e:
+        print(f"[意图分类] 分类失败，使用默认: {e}")
+    
+    # =========================
+    # 🔹 步骤2: 根据意图分支处理
+    # =========================
+    use_finance = intent in ["investment", "mixed", "general"]
+    use_rag = intent in ["investment", "policy", "mixed", "general"]  # 投资意图也需要RAG检索
+    
+    # 只有纯投资咨询（需要实时行情）才跳过RAG
+    # 判断标准：问题包含具体的股票代码、基金代码或实时行情关键词
+    pure_investment_patterns = [
+        r'sh\d{6}', r'sz\d{6}',  # 股票代码
+        r'\d{6}',  # 基金代码
+        r'今天.*(涨|跌|收盘)', r'实时行情', r'当前价格',
+    ]
+    is_pure_investment = any(re.search(p, question) for p in pure_investment_patterns)
+    
+    if intent == "investment" and is_pure_investment and not use_rag:
+        return _handle_investment_question(question, top_k)
+    
+    # 正常RAG流程
     response = graph.invoke({"question": question, "top_k": top_k})
 
-    # 保存对话历史到 Markdown
-    memory_manager.add_message("用户", question)
-    memory_manager.add_message("AI", response["answer"])
+    # 保存对话历史到 Markdown（延迟加载）
+    memory = _get_memory_manager()
+    memory.add_message("用户", question)
+    memory.add_message("AI", response["answer"])
 
     # 整理结果（处理带分数的文档）
     sources = []
@@ -583,49 +851,120 @@ def ask_question(question: str, top_k: int = 3):
     used_context = len(sources) > 0
 
     # =========================
-    # 🔹 合规审查
+    # 🔹 合规审查（延迟加载）
     # =========================
     compliance_result = None
     answer_with_compliance = response["answer"]
 
-    if COMPLIANCE_ENABLED and compliance_checker:
-        try:
-            # 提取产品信息（从sources中获取）
-            product_info = "未知基金产品"
-            if sources:
-                source_names = set(s.get("source", "") for s in sources)
-                if source_names:
-                    # 提取文件名作为产品名
-                    product_names = [Path(s).stem for s in source_names if s != "unknown"]
-                    if product_names:
-                        product_info = ", ".join(product_names)
+    # 延迟加载合规审查器
+    from src.compliance_checker import ComplianceChecker
+    try:
+        if not hasattr(_get_compliance, 'instance'):
+            _get_compliance.instance = ComplianceChecker()
+        checker = _get_compliance.instance
+        
+        if checker:
+            try:
+                # 提取产品信息（从sources中获取）
+                product_info = "未知基金产品"
+                if sources:
+                    source_names = set(s.get("source", "") for s in sources)
+                    if source_names:
+                        product_names = [Path(s).stem for s in source_names if s != "unknown"]
+                        if product_names:
+                            product_info = ", ".join(product_names)
 
-            # 调用合规审查
-            compliance_result = compliance_checker.check(
-                question=question,
-                answer=response["answer"],
-                product_info=product_info
-            )
+                # 调用合规审查
+                compliance_result = checker.check(
+                    question=question,
+                    answer=response["answer"],
+                    product_info=product_info
+                )
 
-            # 在答案末尾添加合规标识
-            compliance_tag = _build_compliance_tag(compliance_result)
-            answer_with_compliance = response["answer"] + compliance_tag
+                # 在答案末尾添加合规标识
+                compliance_tag = _build_compliance_tag(compliance_result)
+                answer_with_compliance = response["answer"] + compliance_tag
 
-        except Exception as e:
-            print(f"合规审查出错: {e}")
-            compliance_result = {
-                "is_compliant": None,
-                "risk_level": "unknown",
-                "violations": [],
-                "summary": f"合规审查失败: {str(e)}"
-            }
+            except Exception as e:
+                print(f"合规审查出错: {e}")
+                compliance_result = {
+                    "is_compliant": None,
+                    "risk_level": "unknown",
+                    "violations": [],
+                    "summary": f"合规审查失败: {str(e)}"
+                }
+    except Exception as e:
+        print(f"合规审查初始化失败: {e}")
 
     return {
         "question": question,
         "answer": answer_with_compliance,
         "source": sources,
         "used_context": used_context,
-        "compliance": compliance_result
+        "compliance": compliance_result,
+        "intent": intent,
+        "intent_reason": intent_reason
+    }
+
+
+def _handle_investment_question(question: str, top_k: int):
+    """
+    处理纯投资顾问类问题（不需要RAG文档检索）
+    只使用金融数据 + LLM回答
+    """
+    from src.finance_trigger import get_finance_trigger
+    from langchain_ollama import ChatOllama
+    
+    # 1. 获取金融数据
+    finance_trigger = get_finance_trigger()
+    finance_context, finance_sources = finance_trigger.get_finance_context(question)
+    
+    # 2. 使用LLM生成回答
+    llm = ChatOllama(model="my-qwen25:latest", temperature=0.7)
+    
+    if finance_context:
+        prompt = f"""你是一位专业的投资顾问。请根据以下实时金融数据回答用户问题。
+
+金融数据:
+{finance_context}
+
+用户问题: {question}
+
+要求:
+1. 基于提供的金融数据进行分析
+2. 如果数据不足，说明情况
+3. 给出专业的投资建议
+4. 用中文回答
+"""
+    else:
+        # 没有获取到金融数据，使用通用回答
+        prompt = f"""你是一位专业的投资顾问。请回答以下问题。
+
+用户问题: {question}
+
+要求:
+1. 基于你的金融知识回答
+2. 给出专业的投资建议
+3. 用中文回答
+4. 注意合规提示
+"""
+    
+    response = llm.invoke(prompt)
+    answer = response.content if hasattr(response, 'content') else str(response)
+    
+    # 3. 保存对话历史
+    memory = _get_memory_manager()
+    memory.add_message("用户", question)
+    memory.add_message("AI", answer)
+    
+    return {
+        "question": question,
+        "answer": answer,
+        "source": [],
+        "used_context": bool(finance_context),
+        "compliance": None,
+        "intent": "investment",
+        "intent_reason": "纯投资顾问类问题，使用金融数据"
     }
 
 
@@ -652,7 +991,8 @@ def _build_compliance_tag(compliance_result: dict) -> str:
 
 def clear_conversation_history():
     """清空对话历史"""
-    memory_manager.clear_history()
+    memory = _get_memory_manager()
+    memory.clear_history()
 
 
 def create_rag_chain():

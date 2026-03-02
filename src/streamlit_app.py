@@ -5,526 +5,685 @@ import json
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from datetime import datetime
 
-# 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.rag import ask_question, clear_conversation_history
 from src.evaluator import RAGEvaluator
 from src.reporter import EvaluationReporter
+import src.auth as auth
 
-# =========================
-# 🔹 页面样式定义
-# =========================
-st.set_page_config(page_title="RAG 知识库问答系统", layout="wide", page_icon="📚")
+st.set_page_config(page_title="RAG", layout="wide", page_icon="")
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&display=swap');
+/* 极简黑白风格 + 关键交互元素着色 */
 
-.main-header {
-    font-size: 2.5rem;
-    background: linear-gradient(135deg, #1e3a5f, #2d5a87);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    text-align: center;
-    margin-bottom: 1.5rem;
-    font-weight: 700;
-    font-family: 'Noto Serif SC', serif;
+.stApp {
+    background: #ffffff;
 }
 
+/* 标题 */
+.main-header {
+    font-size: 2rem;
+    color: #000000;
+    margin-bottom: 0.25rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+}
+
+/* 导航标签 */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 0.25rem;
+    padding: 0;
+    border-bottom: 2px solid #000000;
+}
+
+.stTabs [data-baseweb="tab"] {
+    padding: 0.75rem 1.5rem;
+    font-weight: 600;
+    border-radius: 0;
+    color: #6b7280;
+    transition: all 0.15s;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+}
+
+.stTabs [aria-selected="true"] {
+    color: #000000;
+    border-bottom: 3px solid #000000;
+}
+
+/* 消息样式 */
 .user-message {
-    background: linear-gradient(135deg, #e3f2fd, #bbdefb);
-    border-left: 4px solid #2196f3;
+    background: #000000;
+    color: #ffffff;
     margin-left: 2rem;
-    padding: 0.8rem;
-    border-radius: 0.8rem;
+    padding: 1rem 1.25rem;
+    border-radius: 0;
+}
+
+.user-message strong {
+    color: #ffffff;
+    font-weight: 600;
 }
 
 .assistant-message {
-    background: linear-gradient(135deg, #fff8e1, #ffecb3);
-    border-left: 4px solid #f57c00;
+    background: #ffffff;
+    color: #000000;
     margin-right: 2rem;
-    padding: 0.8rem;
-    border-radius: 0.8rem;
+    padding: 1rem 1.25rem;
+    border-radius: 0;
+    border: 2px solid #000000;
 }
 
+.assistant-message strong {
+    color: #000000;
+    font-weight: 600;
+}
+
+/* 来源信息 */
 .source-info {
-    background: linear-gradient(135deg, #f3e5f5, #e1bee7);
-    padding: 0.8rem;
-    border-radius: 0.8rem;
-    margin-top: 0.8rem;
-    font-size: 0.9rem;
-    border: 1px solid #ce93d8;
+    background: #f9fafb;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    border: 1px solid #e5e7eb;
+    font-weight: 500;
 }
 
-.status-success { color: #2e7d32; font-weight: bold; }
-.status-error { color: #d32f2f; font-weight: bold; }
-.status-warning { color: #f57c00; font-weight: bold; }
+/* 状态 */
+.status-success {
+    color: #000000;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
 
-.metric-card {
-    background: linear-gradient(135deg, #e8f5e8, #c8e6c9);
+.status-warning {
+    color: #6b7280;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+/* 侧边栏 */
+.stSidebar [data-testid="stSidebar"] {
+    background: #ffffff;
+    border-right: 2px solid #000000;
+    padding: 1.5rem 1rem 1.5rem 1.5rem;
+}
+
+/* 通用按钮 - 黑白 */
+.stButton > button {
+    border-radius: 0;
+    font-weight: 600;
+    border: 2px solid #000000;
+    transition: all 0.1s;
+}
+
+.stButton > button[kind="primary"] {
+    background: #000000;
+    color: #ffffff;
+    border: 2px solid #000000;
+}
+
+/* LOGIN/REGISTER 按钮特殊样式 - 蓝色 */
+.stButton > button[kind="primary"][data-testid*="login"],
+.stButton > button[kind="primary"][data-testid*="register"] {
+    background: #3b82f6 !important;
+    border-color: #3b82f6 !important;
+}
+
+.stButton > button[kind="primary"][data-testid*="login"]:hover,
+.stButton > button[kind="primary"][data-testid*="register"]:hover {
+    background: #2563eb !important;
+    border-color: #2563eb !important;
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0 #3b82f6;
+}
+
+/* 其他按钮悬停效果 */
+.stButton > button:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0 #000000;
+}
+
+/* 输入框 */
+.stTextInput > div > div > input,
+.stTextArea > div > div > textarea {
+    border-radius: 0;
+    border: 2px solid #000000;
+    font-weight: 500;
+}
+
+/* Expander */
+.streamlit-expanderHeader {
+    border-radius: 0 !important;
+    font-weight: 600;
+    border: 1px solid #000000;
+    background: #f9fafb;
+}
+
+/* 历史项 */
+.history-item {
+    padding: 0.75rem 1rem;
+    border-radius: 0;
+    margin-bottom: 0.25rem;
+    font-size: 0.875rem;
+    border: 1px solid transparent;
+    font-weight: 500;
+}
+
+.history-item:hover {
+    background: #000000;
+    color: #ffffff;
+    border: 1px solid #000000;
+}
+
+.history-item.active {
+    background: #000000;
+    color: #ffffff;
+    border: 1px solid #000000;
+}
+
+/* 间距 */
+div[data-testid="stVerticalBlock"] > div[style*="flex-direction: column"] > [data-testid="stVerticalBlock"] {
+    gap: 0.5rem !important;
+}
+
+/* 分隔线 */
+hr {
+    border-color: #000000;
+    border-width: 1px;
+    opacity: 1;
+}
+
+/* 侧边栏标题 */
+.stSidebar h3 {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #000000;
+    margin: 1.5rem 0 0.75rem 0;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+/* Slider - 蓝色渐变 */
+.stSlider [data-testid="stSlider"] > div > div > div {
+    background: linear-gradient(to right, #3b82f6 0%, #3b82f6 var(--value, 50%), #e5e7eb var(--value, 50%), #e5e7eb 100%);
+}
+
+.stSlider [data-testid="stSliderValue"] {
+    font-weight: 700;
+    color: #3b82f6;
+}
+
+.stSlider [data-testid="stThumb"] {
+    background: #3b82f6 !important;
+    border: 2px solid #1e40af !important;
+}
+
+/* Metric */
+.stMetric {
+    border: 2px solid #000000;
     padding: 1rem;
-    border-radius: 0.8rem;
-    text-align: center;
-    margin: 0.5rem 0;
-    border: 1px solid #81c784;
+    background: #ffffff;
+}
+
+.stMetric [data-testid="stMetricValue"] {
+    font-weight: 700;
+    color: #000000;
+}
+
+/* Dataframe */
+.stDataFrame {
+    border: 2px solid #000000;
+}
+
+/* Selectbox */
+.stSelectbox > div > div > select {
+    border-radius: 0;
+    border: 2px solid #000000;
+}
+
+/* Multiselect - 为不同指标添加颜色 */
+.stMultiSelect > div > div > div {
+    border-radius: 0;
+    border: 2px solid #000000;
+}
+
+/* 选中项的颜色标签 */
+.stMultiSelect [data-baseweb="tag"] {
+    border-radius: 0;
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+
+/* 根据指标内容设置不同颜色 */
+.stMultiSelect [data-baseweb="tag"] {
+    background: #3b82f6 !important;
+    color: #ffffff !important;
+    border: none;
 }
 </style>
 """, unsafe_allow_html=True)
 
 
-# =========================
-# 🔹 工具函数
-# =========================
 def display_chat_message(role, content, sources=None, msg_index=None, used_context=None):
-    """显示用户和助手消息"""
     if role == "user":
         st.markdown(f"""
         <div class="user-message">
-            <strong>🧑 您:</strong> {content}
+            <strong>YOU</strong><br>{content}
         </div>
         """, unsafe_allow_html=True)
     else:
-        # 根据是否使用上下文显示不同的提示
         context_hint = ""
         if used_context is not None:
             if used_context:
-                context_hint = '<span class="status-success">✅ 使用了检索结果</span>'
+                context_hint = '<span class="status-success">[RAG]</span>'
             else:
-                context_hint = '<span class="status-warning">⚠️ 未使用检索结果（基于模型知识回答）</span>'
+                context_hint = '<span class="status-warning">[GEN]</span>'
 
         st.markdown(f"""
         <div class="assistant-message">
-            <strong>📖 智能助手:</strong> {content}<br><br>
-            {context_hint}
+            <strong>AI</strong> {content}
+            <div style="margin-top: 0.5rem;">{context_hint}</div>
         </div>
         """, unsafe_allow_html=True)
 
     if sources and used_context:
-        with st.expander(f"📄 参考文档片段 ({len(sources)}个)", expanded=False):
+        with st.expander(f"SOURCE ({len(sources)})", expanded=False):
             for i, source in enumerate(sources, 1):
-                similarity_color = "#4caf50" if source.get('similarity', 0) > 0.5 else "#ff9800"
                 content_full = source.get('content', source.get('content_preview', ''))
+                similarity = source.get('similarity', 0)
+                
                 st.markdown(f"""
                 <div class="source-info">
-                    <strong>📄 片段 {i}: {source.get('source', 'unknown')}</strong>
-                    <span style="background:{similarity_color};color:white;padding:0.2rem 0.5rem;border-radius:0.25rem;">
-                        相似度: {source.get('similarity', 0):.3f}
+                    <strong>{i}. {source.get('source', 'unknown')}</strong>
+                    <span style="background:#000000;color:#ffffff;padding:0.125rem 0.5rem;margin-left:0.5rem;font-size:0.75rem;">
+                        {similarity:.3f}
                     </span>
                 </div>
                 """, unsafe_allow_html=True)
-                st.text_area(f"片段 {i} 完整内容", content_full, height=200, key=f"source_{msg_index}_{i}")
+                st.text_area("", content_full, height=100, key=f"source_{msg_index}_{i}", label_visibility="collapsed")
 
 
-# =========================
-# 🔹 初始化系统状态
-# =========================
 def init_session_state():
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+    if 'user_info' not in st.session_state:
+        st.session_state.user_info = None
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
+    if 'current_conversation_id' not in st.session_state:
+        st.session_state.current_conversation_id = None
     if 'search_top_k' not in st.session_state:
         st.session_state.search_top_k = 3
     if 'system_ready' not in st.session_state:
         st.session_state.system_ready = True
+    if 'eval_results' not in st.session_state:
+        st.session_state.eval_results = None
+    if 'eval_df' not in st.session_state:
+        st.session_state.eval_df = None
+    if 'eval_triggered' not in st.session_state:
+        st.session_state.eval_triggered = False
 
 
-# =========================
-# 🔹 主界面
-# =========================
-def main():
-    st.markdown('<h1 class="main-header">📚 RAG 知识库问答系统</h1>', unsafe_allow_html=True)
+def render_auth_sidebar():
+    if st.session_state.logged_in:
+        return True
+    
+    st.caption("LOGIN TO SAVE HISTORY")
+    
+    auth_mode = st.radio("", ["LOGIN", "REGISTER"], horizontal=True, label_visibility="collapsed")
+    
+    if auth_mode == "LOGIN":
+        with st.form("login"):
+            username = st.text_input("USERNAME", "")
+            password = st.text_input("PASSWORD", "", type="password")
+            submit = st.form_submit_button("LOGIN", type="primary", use_container_width=True)
+            
+            if submit:
+                if username and password:
+                    success, user_info, msg = auth.login(username, password)
+                    if success:
+                        st.session_state.logged_in = True
+                        st.session_state.user_info = user_info
+                        st.rerun()
+                    else:
+                        st.error(msg)
+    else:
+        with st.form("register"):
+            username = st.text_input("USERNAME", "")
+            password = st.text_input("PASSWORD", "", type="password")
+            confirm = st.text_input("CONFIRM", "", type="password")
+            submit = st.form_submit_button("REGISTER", type="primary", use_container_width=True)
+            
+            if submit:
+                if not username or not password:
+                    st.warning("REQUIRED")
+                elif len(username) < 4 or len(username) > 20:
+                    st.warning("USERNAME: 4-20")
+                elif len(password) < 6 or len(password) > 20:
+                    st.warning("PASSWORD: 6-20")
+                elif password != confirm:
+                    st.error("MISMATCH")
+                else:
+                    success, msg = auth.register(username, password)
+                    if success:
+                        st.success("DONE")
+                    else:
+                        st.error(msg)
+    
+    return False
 
+
+def chat_page():
+    st.markdown('<h1 class="main-header">RAG</h1>', unsafe_allow_html=True)
     init_session_state()
 
-    # ========== Sidebar ==========
     with st.sidebar:
-        st.header("⚙️ 系统配置")
-        
-        st.header("📊 系统状态")
-        if st.session_state.system_ready:
-            st.markdown('<span class="status-success">✅ 系统已就绪</span>', unsafe_allow_html=True)
+        # 用户信息
+        if st.session_state.logged_in:
+            st.markdown(f"""
+            <div style="background:#000000;color:#ffffff;padding:1rem;margin-bottom:1rem;font-weight:700;">
+                {st.session_state.user_info['username']}
+            </div>
+            """, unsafe_allow_html=True)
+            
+            if st.button("LOGOUT", use_container_width=True):
+                st.session_state.logged_in = False
+                st.session_state.user_info = None
+                st.session_state.chat_history = []
+                st.session_state.current_conversation_id = None
+                st.rerun()
         else:
-            st.markdown('<span class="status-warning">⚠️ 系统未初始化</span>', unsafe_allow_html=True)
+            render_auth_sidebar()
 
-        st.markdown(f"""
-        <div class="metric-card">
-            <strong>🔧 检索模型:</strong> my-bge-m3
-        </div>
-        <div class="metric-card">
-            <strong>💬 对话模型:</strong> my-qwen25
+        # 系统状态
+        st.markdown("""
+        <div style="border:2px solid #000000;padding:1rem;margin:0.5rem 0;font-size:0.875rem;">
+            <div style="font-weight:700;">SYSTEM</div>
+            <div>STATUS: ONLINE</div>
+            <div>RETRIEVAL: BGE-M3</div>
+            <div>LLM: QWEN-2.5</div>
         </div>
         """, unsafe_allow_html=True)
 
-        st.divider()
-        st.header("🔧 搜索参数设置")
-        st.session_state.search_top_k = st.slider("最大返回片段数", 1, 10, st.session_state.search_top_k)
+        # 参数 - 蓝色滑块
+        st.session_state.search_top_k = st.slider("TOP-K", 1, 10, st.session_state.search_top_k)
 
+        # 对话管理
+        if st.session_state.logged_in:
+            if st.button("NEW CHAT", type="primary", use_container_width=True):
+                conv_id = auth.create_conversation(st.session_state.user_info['id'], "NEW")
+                if conv_id:
+                    st.session_state.current_conversation_id = conv_id
+                    st.session_state.chat_history = []
+                    clear_conversation_history()
+                    st.rerun()
+            
+            # 历史
+            conversations = auth.get_user_conversations(st.session_state.user_info['id'])
+            
+            if conversations:
+                for conv in conversations[:10]:
+                    updated = datetime.fromisoformat(conv['updated_at']).strftime("%m/%d")
+                    title = conv['title'][:12] if conv.get('title') else "UNTITLED"
+                    
+                    is_active = st.session_state.current_conversation_id == conv['id']
+                    
+                    col_btn, col_del = st.columns([5, 1])
+                    with col_btn:
+                        if st.button(f"{title}", key=f"conv_{conv['id']}", use_container_width=True):
+                            messages = auth.get_conversation_messages(conv['id'])
+                            st.session_state.current_conversation_id = conv['id']
+                            st.session_state.chat_history = []
+                            for msg in messages:
+                                if msg['role'] == 'user':
+                                    st.session_state.chat_history.append(("user", msg['content']))
+                                else:
+                                    st.session_state.chat_history.append(("assistant", msg['content'], msg['sources'], msg['used_context']))
+                            st.rerun()
+                    with col_del:
+                        if st.button("×", key=f"del_{conv['id']}", use_container_width=True):
+                            if auth.delete_conversation(conv['id'], st.session_state.user_info['id']):
+                                if st.session_state.current_conversation_id == conv['id']:
+                                    st.session_state.current_conversation_id = None
+                                    st.session_state.chat_history = []
+                                st.rerun()
 
-    # ========== 主体内容 ==========
-    st.header("💬 智能对话助手")
-
-    # 清空按钮（放在输入框上方）
-    col_clear = st.columns([1])[0]
-    with col_clear:
-        if st.button("🧹 清空对话", use_container_width=True):
+        if st.button("CLEAR", use_container_width=True):
             st.session_state.chat_history = []
+            st.session_state.current_conversation_id = None
             clear_conversation_history()
-            st.success("✅ 对话已清空")
             st.rerun()
 
-    # 显示聊天历史
+    # 主内容
     for idx, msg in enumerate(st.session_state.chat_history):
         if len(msg) == 2:
             display_chat_message(msg[0], msg[1], msg_index=idx)
         elif len(msg) == 3:
             display_chat_message(msg[0], msg[1], msg[2], msg_index=idx)
         else:
-            # 新格式: (role, content, sources, used_context)
             display_chat_message(msg[0], msg[1], msg[2], msg_index=idx, used_context=msg[3])
 
-    # 聊天输入框（支持回车发送）
-    if user_input := st.chat_input("请输入您的问题..."):
+    if user_input := st.chat_input(""):
         if user_input.strip():
-            if not st.session_state.system_ready:
-                st.error("⚠️ 系统尚未初始化，请检查配置。")
-            else:
-                with st.spinner("🤔 正在检索与生成回答..."):
-                    result = ask_question(user_input, top_k=st.session_state.search_top_k)
-                    st.session_state.chat_history.append(("user", user_input))
-                    st.session_state.chat_history.append(("assistant", result['answer'], result['source'], result['used_context']))
-                st.rerun()
+            with st.spinner("..."):
+                result = ask_question(user_input, top_k=st.session_state.search_top_k)
+                
+                st.session_state.chat_history.append(("user", user_input))
+                st.session_state.chat_history.append(("assistant", result['answer'], result['source'], result['used_context']))
+                
+                if st.session_state.logged_in:
+                    if not st.session_state.current_conversation_id:
+                        conv_id = auth.create_conversation(st.session_state.user_info['id'], user_input[:30])
+                        st.session_state.current_conversation_id = conv_id
+                    
+                    auth.save_message(st.session_state.current_conversation_id, "user", user_input)
+                    auth.save_message(st.session_state.current_conversation_id, "assistant", result['answer'], result['source'], result['used_context'])
+                    
+                    if st.session_state.current_conversation_id:
+                        auth.update_conversation_title(st.session_state.current_conversation_id, st.session_state.user_info['id'], user_input[:30])
+            
+            st.rerun()
 
 
-# =========================
-# 🔹 评估页面
-# =========================
 def evaluation_page():
-    """独立的评估页面"""
-    st.markdown('<h1 class="main-header">📊 RAG 系统评估</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">EVALUATION</h1>', unsafe_allow_html=True)
+    init_session_state()
 
-    # 初始化评估状态
-    if 'eval_results' not in st.session_state:
-        st.session_state.eval_results = None
-    if 'eval_df' not in st.session_state:
-        st.session_state.eval_df = None
-
-    # ========== 侧边栏配置 ==========
     with st.sidebar:
-        st.header("⚙️ 评估配置")
-
-        # 测试集文件选择
+        # 测试集
         testset_dir = project_root / "src"
-        testset_files = list(testset_dir.glob("*.json"))
-        testset_files = [f for f in testset_files if f.name not in ["testset_template.json", "retrieval_*.json"]]
+        testset_files = [f for f in testset_dir.glob("*.json") if f.name not in ["testset_template.json", "retrieval_*.json"]]
 
         if testset_files:
-            selected_file = st.selectbox(
-                "选择测试集文件",
-                options=[f.name for f in testset_files],
-                index=0
-            )
+            selected_file = st.selectbox("DATASET", options=[f.name for f in testset_files], index=0)
         else:
-            st.warning("⚠️ 未找到测试集文件，请先创建测试集")
+            st.warning("NO DATASET")
             selected_file = None
 
-        st.divider()
-
-        # 评估指标选择
-        st.header("📈 评估指标")
+        # 指标 - 蓝色标签
         available_metrics = ["faithfulness", "answer_relevance", "context_precision", "context_recall"]
+        metric_labels = {
+            "faithfulness": "FAITH",
+            "answer_relevance": "RELEVANCE",
+            "context_precision": "PRECISION",
+            "context_recall": "RECALL"
+        }
+        
         selected_metrics = st.multiselect(
-            "选择要评估的指标",
-            options=available_metrics,
-            default=available_metrics
+            "METRICS",
+            options=[metric_labels[m] for m in available_metrics],
+            default=[metric_labels[m] for m in available_metrics]
         )
+        
+        reverse_labels = {v: k for k, v in metric_labels.items()}
+        selected_metrics_keys = [reverse_labels[m] for m in selected_metrics]
 
-        st.divider()
+        if st.button("RUN", type="primary", use_container_width=True):
+            st.session_state.eval_triggered = True
 
-        # 评估按钮
-        eval_button = st.button("🚀 开始评估", use_container_width=True, type="primary")
-
-    # ========== 主内容区 ==========
+    # 主内容
     col1, col2 = st.columns([2, 1])
 
     with col1:
-        st.subheader("📝 测试集预览")
-
         if selected_file:
             testset_path = testset_dir / selected_file
             with open(testset_path, 'r', encoding='utf-8') as f:
                 testset_data = json.load(f)
 
-            st.info(f"共 {len(testset_data)} 个测试问题")
+            st.caption(f"{len(testset_data)} QUESTIONS")
 
-            for i, item in enumerate(testset_data[:3]):  # 只显示前3个
-                with st.expander(f"问题 {i+1}: {item['question'][:50]}...", expanded=False):
-                    st.markdown(f"**问题:** {item['question']}")
-                    st.markdown(f"**标准答案:** {item.get('ground_truth', item.get('reference', 'N/A'))}")
+            for i, item in enumerate(testset_data[:2]):
+                with st.expander(f"Q{i+1}: {item['question'][:30]}...", expanded=False):
+                    st.text(f"Q: {item['question']}")
+                    st.text(f"A: {item.get('ground_truth', item.get('reference', 'N/A'))}")
 
-            if len(testset_data) > 3:
-                st.caption(f"...还有 {len(testset_data) - 3} 个问题")
+            if len(testset_data) > 2:
+                st.caption(f"+{len(testset_data) - 2}")
 
     with col2:
-        st.subheader("📖 指标说明")
+        st.caption("METRICS")
+        st.text("FAITH: answer based on context")
+        st.text("REL: answer relevance")
+        st.text("PREC: context relevance")
+        st.text("REC: context coverage")
 
-        metric_descriptions = {
-            "faithfulness": "忠实度：答案是否基于检索到的上下文",
-            "answer_relevance": "答案相关性：答案与问题的相关程度",
-            "context_precision": "上下文精确度：检索到的片段与问题的相关程度",
-            "context_recall": "上下文召回率：检索内容覆盖标准答案的程度"
-        }
-
-        for metric in selected_metrics:
-            st.markdown(f"**{metric}**")
-            st.caption(metric_descriptions.get(metric, ""))
-            st.divider()
-
-    # ========== 执行评估 ==========
-    if eval_button and selected_file:
-        if not selected_metrics:
-            st.error("⚠️ 请至少选择一个评估指标")
+    # 执行
+    if st.session_state.eval_triggered and selected_file:
+        st.session_state.eval_triggered = False
+        
+        if not selected_metrics_keys:
+            st.error("SELECT METRICS")
         else:
             try:
-                with st.spinner("🔄 正在执行评估..."):
-                    # 获取 RAG 链（需要从 rag.py 导入）
+                with st.spinner("..."):
                     from src.rag import create_rag_chain
                     rag_chain = create_rag_chain()
 
-                    # 创建评估器
                     evaluator = RAGEvaluator(
                         rag_chain=rag_chain,
                         model_name="my-qwen25",
                         base_url="http://localhost:11434"
                     )
 
-                    # 执行评估
                     eval_results = evaluator.evaluate(
                         testset_path=str(testset_path),
-                        metrics=selected_metrics,
+                        metrics=selected_metrics_keys,
                         save_dir=str(project_root / "evaluation_results")
                     )
 
-                    # 保存到会话状态
                     st.session_state.eval_results = eval_results
                     st.session_state.eval_df = evaluator.get_dataframe()
 
-                st.success("✅ 评估完成！")
-
             except Exception as e:
-                st.error(f"❌ 评估失败: {str(e)}")
-                st.exception(e)
+                st.error(f"ERROR: {str(e)}")
 
-    # ========== 显示评估结果 ==========
+    # 结果
     if st.session_state.eval_results is not None:
         st.divider()
-        st.header("📊 评估结果")
-
-        # 1. 摘要指标卡片
+        
         summary = st.session_state.eval_results["summary"]
+        metric_names = [metric_labels.get(k, k).upper() for k in summary.keys()]
         cols = st.columns(len(summary))
 
         for i, (metric, score) in enumerate(summary.items()):
-            # 根据分数设置颜色 - 淡雅配色
+            label = metric_labels.get(metric, metric).upper()
             if score >= 0.8:
-                color = "#4CAF50"  # 淡绿
-                icon = "✓"
+                delta = "OK"
+                delta_color = "normal"
             elif score >= 0.6:
-                color = "#FFB74D"  # 淡橙
-                icon = "◐"
+                delta = "WARN"
+                delta_color = "off"
             else:
-                color = "#E57373"  # 淡红
-                icon = "✗"
+                delta = "FAIL"
+                delta_color = "inverse"
 
-            cols[i].metric(
-                label=f"{metric}\n{icon}",
-                value=f"{score:.3f}",
-                delta_color="normal" if score >= 0.6 else "inverse"
-            )
+            cols[i].metric(label, f"{score:.3f}", delta, delta_color=delta_color)
 
         st.divider()
 
-        # 2. 图表可视化
         col_chart1, col_chart2 = st.columns(2)
 
         with col_chart1:
-            st.subheader("📊 指标概览")
-            # 淡雅配色方案
-            pastel_colors = ['#A8D5E5', '#FAD6A5', '#B5E5CF', '#D4A5D9'][:len(summary)]
+            st.caption("SUMMARY")
             fig_summary = go.Figure()
             fig_summary.add_trace(go.Bar(
-                x=list(summary.keys()),
+                x=metric_names,
                 y=list(summary.values()),
-                marker_color=pastel_colors,
-                marker_line_color='#888888',
-                marker_line_width=1,
+                marker_color='#000000',
+                marker_line_color='#000000',
+                marker_line_width=2,
             ))
             fig_summary.update_layout(
                 yaxis=dict(range=[0, 1]),
-                height=300
+                height=280,
+                showlegend=False,
+                margin=dict(l=10, r=10, t=10, b=10),
+                plot_bgcolor='white',
+                paper_bgcolor='white'
             )
+            fig_summary.update_xaxes(showline=True, linewidth=2, linecolor='#000000')
+            fig_summary.update_yaxes(showline=True, linewidth=2, linecolor='#000000')
             st.plotly_chart(fig_summary, use_container_width=True)
 
         with col_chart2:
-            st.subheader("📈 指标分布")
+            st.caption("DISTRIBUTION")
             if st.session_state.eval_df is not None:
                 metrics_cols = [col for col in st.session_state.eval_df.columns
                                if col not in ['user_input', 'response', 'retrieved_contexts', 'reference']]
 
                 if metrics_cols:
-                    # 淡雅配色
-                    pastel_box_colors = ['#A8D5E5', '#FAD6A5', '#B5E5CF', '#D4A5D9']
                     fig_box = go.Figure()
                     for idx, metric in enumerate(metrics_cols):
                         fig_box.add_trace(go.Box(
                             y=st.session_state.eval_df[metric],
-                            name=metric,
-                            boxmean=True,
-                            marker_color=pastel_box_colors[idx % len(pastel_box_colors)],
-                            line_color='#888888',
+                            name=metric_labels.get(metric, metric).upper(),
+                            marker_color='#000000',
+                            line_color='#000000',
+                            line_width=2,
                         ))
-                    fig_box.update_layout(height=300)
+                    fig_box.update_layout(
+                        height=280,
+                        margin=dict(l=10, r=10, t=10, b=10),
+                        plot_bgcolor='white',
+                        paper_bgcolor='white'
+                    )
+                    fig_box.update_xaxes(showline=True, linewidth=2, linecolor='#000000')
+                    fig_box.update_yaxes(showline=True, linewidth=2, linecolor='#000000')
                     st.plotly_chart(fig_box, use_container_width=True)
-
-        # 3. 热力图
-        st.subheader("◐ 问题级评分热力图")
-        if st.session_state.eval_df is not None:
-            metrics_cols = [col for col in st.session_state.eval_df.columns
-                           if col not in ['user_input', 'response', 'retrieved_contexts', 'reference']]
-
-            if metrics_cols:
-                # 淡雅渐变色：浅蓝 -> 浅绿 -> 浅黄
-                fig_heatmap = go.Figure(data=go.Heatmap(
-                    z=st.session_state.eval_df[metrics_cols].T.values,
-                    x=[f"Q{i+1}" for i in range(len(st.session_state.eval_df))],
-                    y=metrics_cols,
-                    colorscale=[[0, '#E3F2FD'], [0.5, '#C8E6C9'], [1, '#FFF9C4']],
-                    zmid=0.5,
-                    zmin=0,
-                    zmax=1,
-                ))
-                fig_heatmap.update_layout(height=400)
-                st.plotly_chart(fig_heatmap, use_container_width=True)
 
         st.divider()
 
-        # 4. 详细结果表格
-        st.subheader("📋 详细评估结果")
+        st.caption("DETAILS")
         if st.session_state.eval_df is not None:
             display_cols = [col for col in st.session_state.eval_df.columns
                            if col not in ['retrieved_contexts', 'reference']]
-            st.dataframe(st.session_state.eval_df[display_cols], use_container_width=True)
+            st.dataframe(st.session_state.eval_df[display_cols], use_container_width=True, height=400)
 
         st.divider()
 
-        # 5. 导出报告
-        st.subheader("💾 导出报告")
-        col_export_html, col_export_json = st.columns(2)
-
-        with col_export_html:
-            if st.button("📄 生成 HTML 报告", use_container_width=True):
-                try:
-                    reporter = EvaluationReporter(st.session_state.eval_results)
-                    html_path = reporter.generate_html_report()
-                    st.success(f"✅ HTML 报告已生成: {html_path}")
-                except Exception as e:
-                    st.error(f"❌ 生成报告失败: {str(e)}")
-
-        with col_export_json:
-            # 下载 JSON
-            json_str = json.dumps(st.session_state.eval_results, ensure_ascii=False, indent=2)
-            st.download_button(
-                label="📥 下载 JSON 结果",
-                data=json_str,
-                file_name=f"eval_results_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json",
-                use_container_width=True
-            )
+        json_str = json.dumps(st.session_state.eval_results, ensure_ascii=False, indent=2)
+        st.download_button(
+            "DOWNLOAD",
+            data=json_str,
+            file_name=f"eval_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.json",
+            mime="application/json",
+            use_container_width=True
+        )
 
 
-# =========================
-# 🔹 主函数
-# =========================
 def main():
-    # 创建多页面导航
-    page = st.navigation([
-        st.Page(chat_page, title="对话", icon="💬"),
-        st.Page(evaluation_page, title="评估", icon="📊"),
-    ])
-
-    page.run()
-
-
-def chat_page():
-    """对话页面（原有主界面逻辑）"""
-    st.markdown('<h1 class="main-header">📚 RAG 知识库问答系统</h1>', unsafe_allow_html=True)
-
     init_session_state()
-
-    # ========== Sidebar ==========
-    with st.sidebar:
-        st.header("⚙️ 系统配置")
-
-        st.header("📊 系统状态")
-        if st.session_state.system_ready:
-            st.markdown('<span class="status-success">✅ 系统已就绪</span>', unsafe_allow_html=True)
-        else:
-            st.markdown('<span class="status-warning">⚠️ 系统未初始化</span>', unsafe_allow_html=True)
-
-        st.markdown(f"""
-        <div class="metric-card">
-            <strong>🔧 检索模型:</strong> my-bge-m3
-        </div>
-        <div class="metric-card">
-            <strong>💬 对话模型:</strong> my-qwen25
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.divider()
-        st.header("🔧 搜索参数设置")
-        st.session_state.search_top_k = st.slider("最大返回片段数", 1, 10, st.session_state.search_top_k)
-
-        st.divider()
-        if st.button("🗑️ 清除对话历史"):
-            st.session_state.chat_history = []
-            clear_conversation_history()
-            st.success("✅ 对话已清空")
-            st.rerun()
-
-
-    # ========== 主体内容 ==========
-    st.header("💬 智能对话助手")
-
-    # 聊天输入框（支持回车发送）
-    if user_input := st.chat_input("请输入您的问题..."):
-        if user_input.strip():
-            if not st.session_state.system_ready:
-                st.error("⚠️ 系统尚未初始化，请检查配置。")
-            else:
-                with st.spinner("🤔 正在检索与生成回答..."):
-                    result = ask_question(user_input, top_k=st.session_state.search_top_k)
-                    st.session_state.chat_history.append(("user", user_input))
-                    st.session_state.chat_history.append(("assistant", result['answer'], result['source'], result['used_context']))
-                st.rerun()
-
-    # 清除对话历史按钮
-    if st.button("🧹 清除对话历史", use_container_width=True):
-        st.session_state.chat_history = []
-        clear_conversation_history()
-        st.success("✅ 对话已清空")
-        st.rerun()
-
-    # 显示聊天历史
-    for idx, msg in enumerate(st.session_state.chat_history):
-        if len(msg) == 2:
-            display_chat_message(msg[0], msg[1], msg_index=idx)
-        elif len(msg) == 3:
-            display_chat_message(msg[0], msg[1], msg[2], msg_index=idx)
-        else:
-            # 新格式: (role, content, sources, used_context)
-            display_chat_message(msg[0], msg[1], msg[2], msg_index=idx, used_context=msg[3])
+    
+    page = st.navigation([
+        st.Page(chat_page, title="CHAT"),
+        st.Page(evaluation_page, title="EVAL"),
+    ])
+    page.run()
 
 
 if __name__ == "__main__":
