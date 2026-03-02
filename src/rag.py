@@ -744,10 +744,10 @@ graph = graph_builder.compile()
 # =========================
 # 🔹 对话函数（供 Streamlit 调用）
 # =========================
-def ask_question(question: str, top_k: int = 3):
+def ask_question(question: str, top_k: int = 3, user_name: str = None) -> dict:
     """
     问答函数，供 Web 界面调用
-    
+
     意图分支逻辑：
     - INVESTMENT（投资顾问）→ 主要使用金融数据 + RAG
     - POLICY（政策咨询）→ 主要使用RAG文档检索
@@ -757,6 +757,7 @@ def ask_question(question: str, top_k: int = 3):
     Args:
         question: 用户问题
         top_k: 返回的文档数量
+        user_name: 用户称呼（可选，用于个性化回复）
 
     Returns:
         dict: 包含 answer, source, question, used_context, intent
@@ -896,9 +897,14 @@ def ask_question(question: str, top_k: int = 3):
     except Exception as e:
         print(f"合规审查初始化失败: {e}")
 
+    # 添加用户称呼（如果有）
+    final_answer = answer_with_compliance
+    if user_name:
+        final_answer = f"{user_name}，{answer_with_compliance}"
+
     return {
         "question": question,
-        "answer": answer_with_compliance,
+        "answer": final_answer,
         "source": sources,
         "used_context": used_context,
         "compliance": compliance_result,

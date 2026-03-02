@@ -22,4 +22,53 @@ FinRAG-Advisor 基于多模态知识图谱增强的智能投顾与合规双模 R
 一个用了意图识别，并且有很多相关数据集的项目，主要是参考了它的数据集。第四个是一个用了知识
 图谱Neo4j的项目，主要是参考了它的知识图谱构建以及检索。论文方面我首先是去找了一本浙大的大模
 型基础的书来看，深入阅读之后去找了书里面提到的参考文献去看，最后我在google schooler和
-知网寻找了金融+ai领域的文献去看，例如fin-gpt。
+
+
+================================================================================
+【开发记录文档】
+================================================================================
+
+本文档用于记录开发过程中的执行逻辑和技术决策，后续将使用规范的开发文档替代。
+
+--------------------------------------------------------------------------------
+# 用户画像与引导模块（2026-03-02）
+--------------------------------------------------------------------------------
+
+## 1. 存储位置
+- 数据库表：`UserProfile`，位于 `data/users.db`
+- 表结构定义：`src/auth.py` 第68-94行
+
+## 2. 表字段说明
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | Integer | 主键 |
+| user_id | Integer | 外键，关联users表 |
+| display_name | String | 显示名称 |
+| timezone | String | 时区，默认Asia/Shanghai |
+| bio | Text | 个人简介 |
+| investment_experience | String | 投资经验（新手/初级/中级/高级） |
+| risk_preference | String | 风险偏好（保守型/稳健型/平衡型/激进型） |
+| interested_areas | String | 感兴趣领域，逗号分隔 |
+| has_completed_onboarding | Integer | 是否完成首次引导（0/1） |
+| onboarding_step | Integer | 引导步骤 |
+| notification_enabled | Integer | 通知是否启用 |
+| created_at | DateTime | 创建时间 |
+| updated_at | DateTime | 更新时间 |
+
+## 3. 核心函数（src/auth.py）
+- `create_user_profile(user_id)` - 创建用户画像
+- `get_user_profile(user_id)` - 获取用户画像
+- `update_user_profile(user_id, **kwargs)` - 更新用户画像
+- `complete_onboarding(user_id)` - 完成首次引导
+- `needs_onboarding(user_id)` - 检查是否需要引导
+
+## 4. 引导流程（src/onboarding.py）
+- 对话式引导：欢迎 → 称呼 → 感兴趣领域 → 完成
+- 通过 `get_onboarding_message()` 获取当前步骤消息
+- 通过 `process_onboarding_response()` 处理用户回复
+- 通过 `should_show_onboarding()` 检查是否需要显示引导
+
+## 5. 前端集成（src/streamlit_app.py）
+- 登录后自动检测是否需要引导
+- 引导消息显示在对话框中
+- 用户回复通过正常聊天输入框处理 

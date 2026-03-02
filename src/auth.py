@@ -65,6 +65,35 @@ class Message(Base):
     conversation = relationship("Conversation", back_populates="messages")
 
 
+class UserProfile(Base):
+    """用户画像表"""
+    __tablename__ = "user_profiles"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
+    
+    # 基本信息
+    display_name = Column(String(50), default="")  # 显示名称
+    timezone = Column(String(50), default="Asia/Shanghai")  # 时区
+    bio = Column(Text, default="")  # 个人简介
+    
+    # 投资偏好
+    investment_experience = Column(String(20), default="新手")  # 投资经验: 新手/初级/中级/高级
+    risk_preference = Column(String(20), default="稳健型")  # 风险偏好: 保守型/稳健型/平衡型/激进型
+    interested_areas = Column(Text, default="")  # 感兴趣领域，逗号分隔
+    
+    # 首次使用引导
+    has_completed_onboarding = Column(Integer, default=0)  # 是否完成首次引导
+    onboarding_step = Column(Integer, default=0)  # 引导步骤
+    
+    # 设置
+    notification_enabled = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    user = relationship("User", backref="profile")
+
+
 # 初始化数据库
 def init_db():
     """初始化数据库表"""
@@ -106,6 +135,9 @@ def register(username: str, password: str) -> tuple[bool, str]:
         session.add(new_user)
         session.commit()
         
+        # 自动创建用户画像
+        create_user_profile(new_user.id)
+        
         return True, "注册成功"
     except Exception as e:
         session.rollback()
@@ -135,6 +167,10 @@ def login(username: str, password: str) -> tuple[bool, Optional[Dict[str, Any]],
             "username": user.username,
             "created_at": user.created_at.isoformat()
         }
+        
+        # 自动创建用户画像（如果不存在）
+        create_user_profile(user.id)
+        
         return True, user_info, "登录成功"
     finally:
         session.close()
@@ -315,6 +351,107 @@ def update_conversation_title(conversation_id: int, user_id: int, title: str) ->
         return False
     finally:
         session.close()
+
+
+# =========================
+# 用户画像管理功能
+# =========================
+
+def create_user_profile(user_id: int) -> Optional[int]:
+    """创建用户画像"""
+    init_db()
+    session = SessionLocal()
+    try:
+        # 检查是否已存在
+        existing = session.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        if existing:
+            return existing.id
+        
+        profile = UserProfile(user_id=user_id)
+        session.add(profile)
+        session.commit()
+        return profile.id
+    except Exception as e:
+        session.rollback()
+        return None
+    finally:
+        session.close()
+
+
+def get_user_profile(user_id: int) -> Optional[Dict[str, Any]]:
+    """获取用户画像"""
+    init_db()
+    session = SessionLocal()
+    try:
+        profile = session.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        if not profile:
+            return None
+        
+        return {
+            "id": profile.id,
+            "user_id": profile.user_id,
+            "display_name": profile.display_name,
+            "timezone": profile.timezone,
+            "bio": profile.bio,
+            "investment_experience": profile.investment_experience,
+            "risk_preference": profile.risk_preference,
+            "interested_areas": profile.interested_areas,
+            "has_completed_onboarding": bool(profile.has_completed_onboarding),
+            "onboarding_step": profile.onboarding_step,
+            "notification_enabled": bool(profile.notification_enabled),
+            "created_at": profile.created_at.isoformat() if profile.created_at else None,
+            "updated_at": profile.updated_at.isoformat() if profile.updated_at else None
+        }
+    finally:
+        session.close()
+
+
+def update_user_profile(user_id: int, **kwargs) -> bool:
+    """更新用户画像"""
+    init_db()
+    session = SessionLocal()
+    try:
+        profile = session.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        if not profile:
+            # 如果不存在，先创建
+            profile = UserProfile(user_id=user_id)
+            session.add(profile)
+        
+        # 更新字段
+        allowed_fields = [
+            "display_name", "timezone", "bio",
+            "investment_experience", "risk_preference", "interested_areas",
+            "has_completed_onboarding", "onboarding_step", "notification_enabled"
+        ]
+        
+        for key, value in kwargs.items():
+            if key in allowed_fields and hasattr(profile, key):
+                setattr(profile, key, value)
+        
+        session.commit()
+        return True
+    except Exception as e:
+        session.rollback()
+        return False
+    finally:
+        session.close()
+
+
+def complete_onboarding(user_id: int) -> bool:
+    """完成首次引导"""
+    return update_user_profile(
+        user_id,
+        has_completed_onboarding=1,
+        onboarding_step=3
+    )
+
+
+def needs_onboarding(user_id: int) -> bool:
+    """检查是否需要完成首次引导"""
+    profile = get_user_profile(user_id)
+    if not profile:
+        return True
+    return not profile["has_completed_onboarding"]
 
 
 if __name__ == "__main__":

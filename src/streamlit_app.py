@@ -14,6 +14,7 @@ from src.rag import ask_question, clear_conversation_history
 from src.evaluator import RAGEvaluator
 from src.reporter import EvaluationReporter
 import src.auth as auth
+from src.onboarding import get_onboarding_message, should_show_onboarding, mark_onboarding_complete, is_onboarding_complete, process_onboarding_response
 
 st.set_page_config(page_title="RAG", layout="wide", page_icon="")
 
@@ -284,10 +285,12 @@ def display_chat_message(role, content, sources=None, msg_index=None, used_conte
             else:
                 context_hint = '<span class="status-warning">[GEN]</span>'
 
+        hint_html = f'<div style="margin-top: 0.5rem;">{context_hint}</div>' if context_hint else ''
+
         st.markdown(f"""
         <div class="assistant-message">
-            <strong>AI</strong> {content}
-            <div style="margin-top: 0.5rem;">{context_hint}</div>
+            <strong>AI</strong><br>{content}
+            {hint_html}
         </div>
         """, unsafe_allow_html=True)
 
@@ -323,6 +326,8 @@ def init_session_state():
         st.session_state.system_ready = True
     if 'eval_results' not in st.session_state:
         st.session_state.eval_results = None
+    if 'onboarding_shown' not in st.session_state:
+        st.session_state.onboarding_shown = False
     if 'eval_df' not in st.session_state:
         st.session_state.eval_df = None
     if 'eval_triggered' not in st.session_state:
@@ -459,6 +464,20 @@ def chat_page():
             clear_conversation_history()
             st.rerun()
 
+    # 检查是否需要显示欢迎消息
+    if (st.session_state.logged_in and 
+        st.session_state.user_info and 
+        not st.session_state.onboarding_shown and
+        len(st.session_state.chat_history) == 0):
+        
+        user_id = st.session_state.user_info.get("id")
+        if user_id and should_show_onboarding(user_id) and not st.session_state.onboarding_shown:
+            # 显示欢迎消息
+            onboarding = get_onboarding_message(user_id)
+            st.session_state.chat_history.append(("assistant", onboarding["message"]))
+            st.session_state.onboarding_shown = True
+            st.rerun()
+
     # 主内容
     for idx, msg in enumerate(st.session_state.chat_history):
         if len(msg) == 2:
@@ -470,22 +489,51 @@ def chat_page():
 
     if user_input := st.chat_input(""):
         if user_input.strip():
-            with st.spinner("..."):
-                result = ask_question(user_input, top_k=st.session_state.search_top_k)
-                
-                st.session_state.chat_history.append(("user", user_input))
-                st.session_state.chat_history.append(("assistant", result['answer'], result['source'], result['used_context']))
-                
-                if st.session_state.logged_in:
-                    if not st.session_state.current_conversation_id:
-                        conv_id = auth.create_conversation(st.session_state.user_info['id'], user_input[:30])
+            st.session_state.chat_history.append(("user", user_input))
+            
+            # 检查是否在引导中
+            in_onboarding = False
+            if st.session_state.logged_in:
+                user_id = st.session_state.user_info.get("id")
+                if user_id and should_show_onboarding(user_id):
+                    in_onboarding = True
+                    # 处理引导回复
+                    next_msg = process_onboarding_response(user_id, user_input)
+                    st.session_state.chat_history.append(("assistant", next_msg["message"]))
+                    
+                    if next_msg.get("is_complete"):
+                        # 引导完成，创建对话记录
+                        conv_id = auth.create_conversation(user_id, "新对话")
                         st.session_state.current_conversation_id = conv_id
+            else:
+                in_onboarding = False
+            
+            # 非引导流程，正常问答
+            if not in_onboarding:
+                # 获取用户称呼
+                user_name = None
+                if st.session_state.logged_in:
+                    user_id = st.session_state.user_info.get("id")
+                    if user_id:
+                        profile = auth.get_user_profile(user_id)
+                        if profile and profile.get("display_name"):
+                            user_name = profile["display_name"]
+
+                with st.spinner("..."):
+                    result = ask_question(user_input, top_k=st.session_state.search_top_k, user_name=user_name)
                     
-                    auth.save_message(st.session_state.current_conversation_id, "user", user_input)
-                    auth.save_message(st.session_state.current_conversation_id, "assistant", result['answer'], result['source'], result['used_context'])
+                    st.session_state.chat_history.append(("assistant", result['answer'], result['source'], result['used_context']))
                     
-                    if st.session_state.current_conversation_id:
-                        auth.update_conversation_title(st.session_state.current_conversation_id, st.session_state.user_info['id'], user_input[:30])
+                    if st.session_state.logged_in:
+                        if not st.session_state.current_conversation_id:
+                            conv_id = auth.create_conversation(st.session_state.user_info['id'], user_input[:30])
+                            st.session_state.current_conversation_id = conv_id
+                        
+                        auth.save_message(st.session_state.current_conversation_id, "user", user_input)
+                        auth.save_message(st.session_state.current_conversation_id, "assistant", result['answer'], result['source'], result['used_context'])
+                        
+                        if st.session_state.current_conversation_id:
+                            auth.update_conversation_title(st.session_state.current_conversation_id, st.session_state.user_info['id'], user_input[:30])
             
             st.rerun()
 
