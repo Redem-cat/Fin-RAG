@@ -17,7 +17,7 @@ ONBOARDING_STEPS: List[Dict[str, Any]] = [
         "step": 0,
         "field": None,  # 欢迎步骤，不收集数据
         "prompt": "请回复任意内容开始",
-        "message": """# 欢迎使用 FinRAG 智能投顾助手！
+        "message": """ 欢迎使用 FinRAG 智能投顾助手！
 
 我是您的智能金融助手，可以帮助您：
 
