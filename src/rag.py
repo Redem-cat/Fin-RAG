@@ -557,8 +557,13 @@ def retrieve(state: State):
     if RERANKER_ENABLED and reranker and retrieved_docs:
         reranked_docs = rerank_documents(question, retrieved_docs, top_k=top_k)
     else:
-        # 如果没有精排，直接使用原始结果
-        reranked_docs = [(doc, 1.0) for doc in retrieved_docs[:top_k]]
+        # 如果没有精排，保留原始向量检索分数
+        reranked_docs = []
+        for item in retrieved_docs_with_scores[:top_k]:
+            if isinstance(item, tuple):
+                reranked_docs.append(item)
+            else:
+                reranked_docs.append((item, 1.0))
     
     # 检索相关对话历史
     relevant_history = memory.retrieve_relevant_history(question, top_k=3)
@@ -975,23 +980,18 @@ def _handle_investment_question(question: str, top_k: int):
 
 
 def _build_compliance_tag(compliance_result: dict) -> str:
-    """构建合规标识"""
+    """构建合规标识（紧凑标签样式）"""
     if not compliance_result:
         return ""
 
     is_compliant = compliance_result.get("is_compliant")
-    risk_level = compliance_result.get("risk_level", "unknown")
-    summary = compliance_result.get("summary", "")
 
     if is_compliant is True:
-        tag = "\n\n---\n✅ **合规审查通过** | 风险等级: low"
+        tag = '<span class="status-compliance">[合规]</span>'
     elif is_compliant is False:
-        tag = f"\n\n---\n⚠️ **合规审查未通过** | 风险等级: {risk_level}"
-        if summary:
-            tag += f"\n📋 审查意见: {summary}"
+        tag = '<span class="status-compliance-risk">[风险]</span>'
     else:
-        tag = "\n\n---\n❓ **合规审查状态未知**"
-
+        tag = ""
     return tag
 
 

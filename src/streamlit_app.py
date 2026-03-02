@@ -64,6 +64,14 @@ st.markdown("""
     margin-left: 2rem;
     padding: 1rem 1.25rem;
     border-radius: 0;
+    margin-bottom: 0.5rem;
+}
+
+.user-message + .stMarkdown {
+    background: #000000;
+    color: #ffffff;
+    margin-left: 2rem;
+    padding: 0 1.25rem 1rem 1.25rem;
 }
 
 .user-message strong {
@@ -78,6 +86,17 @@ st.markdown("""
     padding: 1rem 1.25rem;
     border-radius: 0;
     border: 2px solid #000000;
+    margin-bottom: 0.5rem;
+}
+
+.assistant-message + .stMarkdown {
+    background: #ffffff;
+    color: #000000;
+    margin-right: 2rem;
+    padding: 0 1.25rem 1rem 1.25rem;
+    border: 2px solid #000000;
+    border-top: none;
+    border-radius: 0 0 0 0;
 }
 
 .assistant-message strong {
@@ -96,15 +115,47 @@ st.markdown("""
 
 /* 状态 */
 .status-success {
-    color: #000000;
-    font-size: 0.875rem;
-    font-weight: 600;
+    color: #3b82f6;
+    background: #ffffff;
+    border: 2px solid #3b82f6;
+    padding: 0.125rem 0.5rem;
+    margin-left: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 0;
 }
 
 .status-warning {
-    color: #6b7280;
-    font-size: 0.875rem;
-    font-weight: 500;
+    color: #f59e0b;
+    background: #ffffff;
+    border: 2px solid #f59e0b;
+    padding: 0.125rem 0.5rem;
+    margin-left: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 0;
+}
+
+.status-compliance {
+    color: #10b981;
+    background: #ffffff;
+    border: 2px solid #10b981;
+    padding: 0.125rem 0.5rem;
+    margin-left: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 0;
+}
+
+.status-compliance-risk {
+    color: #ef4444;
+    background: #ffffff;
+    border: 2px solid #ef4444;
+    padding: 0.125rem 0.5rem;
+    margin-left: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 0;
 }
 
 /* 侧边栏 */
@@ -128,19 +179,26 @@ st.markdown("""
     border: 2px solid #000000;
 }
 
-/* LOGIN/REGISTER 按钮特殊样式 - 蓝色 */
-.stButton > button[kind="primary"][data-testid*="login"],
-.stButton > button[kind="primary"][data-testid*="register"] {
+/* LOGIN/REGISTER 表单按钮 - 蓝色新粗野主义 */
+form[data-testid="stForm"] button[data-testid="stFormSubmitButton"] {
     background: #3b82f6 !important;
-    border-color: #3b82f6 !important;
+    color: #ffffff !important;
+    border: 3px solid #000000 !important;
+    border-radius: 0 !important;
+    font-weight: 700 !important;
+    box-shadow: 4px 4px 0 #000000 !important;
+    transition: all 0.15s ease !important;
 }
 
-.stButton > button[kind="primary"][data-testid*="login"]:hover,
-.stButton > button[kind="primary"][data-testid*="register"]:hover {
+form[data-testid="stForm"] button[data-testid="stFormSubmitButton"]:hover {
     background: #2563eb !important;
-    border-color: #2563eb !important;
-    transform: translate(-1px, -1px);
-    box-shadow: 3px 3px 0 #3b82f6;
+    transform: translate(-2px, -2px) !important;
+    box-shadow: 6px 6px 0 #000000 !important;
+}
+
+form[data-testid="stForm"] button[data-testid="stFormSubmitButton"]:active {
+    transform: translate(0, 0) !important;
+    box-shadow: 2px 2px 0 #000000 !important;
 }
 
 /* 其他按钮悬停效果 */
@@ -209,19 +267,38 @@ hr {
     letter-spacing: 0.1em;
 }
 
-/* Slider - 蓝色渐变 */
-.stSlider [data-testid="stSlider"] > div > div > div {
-    background: linear-gradient(to right, #3b82f6 0%, #3b82f6 var(--value, 50%), #e5e7eb var(--value, 50%), #e5e7eb 100%);
+/* Slider - 蓝色新粗野主义 */
+div[data-testid="stSlider"] {
+    border: 2px solid #000000;
+    padding: 0.5rem;
+    background: #ffffff !important;
+    box-shadow: 3px 3px 0 #000000;
+    border-radius: 0 !important;
 }
 
-.stSlider [data-testid="stSliderValue"] {
-    font-weight: 700;
-    color: #3b82f6;
+div[data-testid="stSlider"] > div > div > div {
+    background: linear-gradient(to right, #3b82f6 0%, #3b82f6 var(--progress, 50%), #e5e7eb var(--progress, 50%), #e5e7eb 100%) !important;
+    height: 8px !important;
+    border: 2px solid #000000 !important;
 }
 
-.stSlider [data-testid="stThumb"] {
+div[data-testid="stSlider"] div[data-testid="stNumberInput"] {
+    background: #ffffff !important;
+    border: 2px solid #000000 !important;
+}
+
+div[data-testid="stSlider"] div[data-testid="stNumberInput"] input {
+    color: #3b82f6 !important;
+    font-weight: 700 !important;
+}
+
+div[data-testid="stSlider"] [role="slider"] {
     background: #3b82f6 !important;
-    border: 2px solid #1e40af !important;
+    border: 3px solid #000000 !important;
+    box-shadow: 3px 3px 0 #000000 !important;
+    width: 24px !important;
+    height: 24px !important;
+    border-radius: 0 !important;
 }
 
 /* Metric */
@@ -270,13 +347,14 @@ hr {
 """, unsafe_allow_html=True)
 
 
-def display_chat_message(role, content, sources=None, msg_index=None, used_context=None):
+def display_chat_message(role, content, sources=None, msg_index=None, used_context=None, compliance=None):
     if role == "user":
         st.markdown(f"""
         <div class="user-message">
-            <strong>YOU</strong><br>{content}
+            <strong>YOU</strong>
         </div>
         """, unsafe_allow_html=True)
+        st.markdown(content)
     else:
         context_hint = ""
         if used_context is not None:
@@ -285,21 +363,28 @@ def display_chat_message(role, content, sources=None, msg_index=None, used_conte
             else:
                 context_hint = '<span class="status-warning">[GEN]</span>'
 
-        hint_html = f'<div style="margin-top: 0.5rem;">{context_hint}</div>' if context_hint else ''
+        # 添加合规标识（在 RAG/GEN 右边）
+        compliance_hint = ""
+        if compliance:
+            is_compliant = compliance.get("is_compliant")
+            if is_compliant is True:
+                compliance_hint = '<span class="status-compliance">[合规]</span>'
+            elif is_compliant is False:
+                compliance_hint = '<span class="status-compliance-risk">[风险]</span>'
 
         st.markdown(f"""
         <div class="assistant-message">
-            <strong>AI</strong><br>{content}
-            {hint_html}
+            <strong>AI</strong> {context_hint} {compliance_hint}
         </div>
         """, unsafe_allow_html=True)
+        st.markdown(content)
 
     if sources and used_context:
         with st.expander(f"SOURCE ({len(sources)})", expanded=False):
             for i, source in enumerate(sources, 1):
                 content_full = source.get('content', source.get('content_preview', ''))
                 similarity = source.get('similarity', 0)
-                
+
                 st.markdown(f"""
                 <div class="source-info">
                     <strong>{i}. {source.get('source', 'unknown')}</strong>
@@ -484,6 +569,10 @@ def chat_page():
             display_chat_message(msg[0], msg[1], msg_index=idx)
         elif len(msg) == 3:
             display_chat_message(msg[0], msg[1], msg[2], msg_index=idx)
+        elif len(msg) == 4:
+            display_chat_message(msg[0], msg[1], msg[2], msg_index=idx, used_context=msg[3])
+        elif len(msg) == 5:
+            display_chat_message(msg[0], msg[1], msg[2], msg_index=idx, used_context=msg[3], compliance=msg[4])
         else:
             display_chat_message(msg[0], msg[1], msg[2], msg_index=idx, used_context=msg[3])
 
@@ -521,8 +610,8 @@ def chat_page():
 
                 with st.spinner("..."):
                     result = ask_question(user_input, top_k=st.session_state.search_top_k, user_name=user_name)
-                    
-                    st.session_state.chat_history.append(("assistant", result['answer'], result['source'], result['used_context']))
+
+                    st.session_state.chat_history.append(("assistant", result['answer'], result['source'], result['used_context'], result.get('compliance')))
                     
                     if st.session_state.logged_in:
                         if not st.session_state.current_conversation_id:
@@ -714,14 +803,27 @@ def evaluation_page():
 
         st.divider()
 
-        json_str = json.dumps(st.session_state.eval_results, ensure_ascii=False, indent=2)
-        st.download_button(
-            "DOWNLOAD",
-            data=json_str,
-            file_name=f"eval_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.json",
-            mime="application/json",
-            use_container_width=True
-        )
+        col_dl1, col_dl2 = st.columns(2)
+
+        with col_dl1:
+            json_str = json.dumps(st.session_state.eval_results, ensure_ascii=False, indent=2)
+            st.download_button(
+                "DOWNLOAD JSON",
+                data=json_str,
+                file_name=f"eval_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.json",
+                mime="application/json",
+                use_container_width=True
+            )
+
+        with col_dl2:
+            html_content = st.session_state.eval_df.to_html(index=False, escape=False)
+            st.download_button(
+                "DOWNLOAD HTML",
+                data=html_content,
+                file_name=f"eval_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.html",
+                mime="text/html",
+                use_container_width=True
+            )
 
 
 def main():

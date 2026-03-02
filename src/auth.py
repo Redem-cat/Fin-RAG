@@ -220,7 +220,7 @@ def save_message(
     sources: Optional[List[Dict]] = None,
     used_context: bool = True
 ) -> bool:
-    """保存消息到数据库"""
+    """保存消息到数据库和 Markdown 文件"""
     import json
     
     init_db()
@@ -243,12 +243,53 @@ def save_message(
             conversation.updated_at = datetime.now()
         
         session.commit()
+        
+        # 保存到 Markdown 文件（用于调试）
+        _save_message_to_markdown(conversation_id, role, content, sources, used_context)
+        
         return True
     except Exception as e:
         session.rollback()
         return False
     finally:
         session.close()
+
+
+def _save_message_to_markdown(
+    conversation_id: int,
+    role: str,
+    content: str,
+    sources: Optional[List[Dict]] = None,
+    used_context: bool = True
+):
+    """将消息保存到 Markdown 文件"""
+    import json
+    from pathlib import Path
+    
+    # 创建 conversations 目录
+    conv_dir = Path(__file__).parent.parent / "memory" / "conversations"
+    conv_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 每个对话一个文件
+    conv_file = conv_dir / f"conv_{conversation_id}.md"
+    
+    # 构建消息内容
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    role_display = "**YOU**" if role == "user" else "**AI**"
+    
+    markdown_content = f"\n\n---\n### {role_display} - {timestamp}\n\n{content}\n"
+    
+    # 如果有检索来源，添加来源信息
+    if sources and used_context and role == "assistant":
+        markdown_content += "\n**Sources:**\n"
+        for i, source in enumerate(sources, 1):
+            similarity = source.get('similarity', 0)
+            source_name = source.get('source', 'unknown')
+            markdown_content += f"- [{i}] {source_name} (similarity: {similarity:.3f})\n"
+    
+    # 追加到文件
+    with open(conv_file, 'a', encoding='utf-8') as f:
+        f.write(markdown_content)
 
 
 def get_user_conversations(user_id: int) -> List[Dict[str, Any]]:
