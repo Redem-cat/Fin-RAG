@@ -5,20 +5,23 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+from dotenv import load_dotenv
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_ollama import ChatOllama
 from langchain_ollama import OllamaEmbeddings
 
 from ragas import EvaluationDataset
 from ragas import evaluate
-from ragas.metrics import (
+from ragas.llms import llm_factory
+from ragas.metrics import (  # 使用旧路径以支持自定义 embeddings
     Faithfulness,
     AnswerRelevancy,
     ContextPrecision,
     ContextRecall,
 )
+from ragas.run_config import RunConfig
 import pandas as pd
+from openai import OpenAI
 
 
 class RAGEvaluator:
@@ -27,21 +30,63 @@ class RAGEvaluator:
     def __init__(
         self,
         rag_chain,
-        model_name: str = "qwen2.5:7b",
+        llm_provider: str = "deepseek",  # "deepseek" 或 "ollama"
+        model_name: str = "deepseek-chat",
         embed_model: str = "bge-m3:latest",
-        base_url: str = "http://localhost:11434"
+        embed_provider: str = "ollama",  # "openai" 或 "ollama"
+        base_url: str = "http://localhost:11434",
+        api_key: str = None
     ):
         """初始化评估器
 
         Args:
             rag_chain: RAG 检索链
-            model_name: 使用的 Ollama LLM 模型名称
-            embed_model: 使用的 Ollama Embedding 模型名称
+            llm_provider: LLM 提供商，"deepseek" 或 "ollama"
+            model_name: 使用的 LLM 模型名称
+            embed_model: 使用的 Embedding 模型名称
+            embed_provider: Embedding 提供商，"openai" 或 "ollama"
             base_url: Ollama 服务地址
+            api_key: API Key（用于 DeepSeek/OpenAI）
         """
+        # 加载环境变量
+        base_path = Path(__file__).parent.parent.resolve()
+        dotenv_path = base_path / "elastic-start-local/.env"
+        load_dotenv(dotenv_path=dotenv_path)
+
         self.rag_chain = rag_chain
-        self.llm = ChatOllama(model=model_name, base_url=base_url)
-        self.embeddings = OllamaEmbeddings(model=embed_model, base_url=base_url)
+
+        # 初始化 LLM (使用 llm_factory 创建 InstructorLLM)
+        if llm_provider == "deepseek":
+            if api_key is None:
+                api_key = os.getenv("DEEPSEEK_API_KEY")
+            # 创建 OpenAI 客户端（指向 DeepSeek API）
+            client = OpenAI(
+                api_key=api_key,
+                base_url="https://api.deepseek.com"
+            )
+            # 使用 llm_factory 创建 InstructorLLM
+            self.llm = llm_factory(model_name, client=client)
+        elif llm_provider == "ollama":
+            # Ollama 也需要通过 OpenAI 兼容接口
+            client = OpenAI(
+                api_key="ollama",  # Ollama 不需要真实的 API key
+                base_url=f"{base_url}/v1"
+            )
+            self.llm = llm_factory(model_name, client=client)
+        else:
+            raise ValueError(f"不支持的 LLM 提供商: {llm_provider}")
+
+        # 初始化 Embeddings
+        if embed_provider == "openai":
+            # 使用 OpenAI 的 embedding API（如果有的话）
+            if api_key is None:
+                api_key = os.getenv("OPENAI_API_KEY")
+            self.embeddings = OpenAIEmbeddings(api_key=api_key)
+        elif embed_provider == "ollama":
+            self.embeddings = OllamaEmbeddings(model=embed_model, base_url=base_url)
+        else:
+            raise ValueError(f"不支持的 Embedding 提供商: {embed_provider}")
+
         self.eval_results = None
 
     def load_testset(self, testset_path: str) -> List[Dict[str, Any]]:
@@ -153,7 +198,7 @@ class RAGEvaluator:
 
         dataset = EvaluationDataset.from_list(evaluation_data)
 
-        # 选择指标
+        # 选择指标（旧版 metrics，支持自定义 embeddings）
         metric_map = {
             "faithfulness": Faithfulness(),
             "answer_relevance": AnswerRelevancy(),
@@ -165,11 +210,15 @@ class RAGEvaluator:
 
         # 执行评估
         print(f"执行评估，指标: {metrics}")
+        # 创建 RunConfig
+        run_config = RunConfig(timeout=60, max_retries=2)
+
         result = evaluate(
             dataset=dataset,
             metrics=selected_metrics,
             llm=self.llm,
             embeddings=self.embeddings,  # 使用本地 Ollama 嵌入模型
+            run_config=run_config,
         )
 
         # 转换为 DataFrame

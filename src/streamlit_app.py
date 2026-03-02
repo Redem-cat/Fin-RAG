@@ -703,7 +703,10 @@ def evaluation_page():
 
                     evaluator = RAGEvaluator(
                         rag_chain=rag_chain,
-                        model_name="my-qwen25",
+                        llm_provider="deepseek",  # 使用 DeepSeek API
+                        model_name="deepseek-chat",
+                        embed_provider="ollama",  # Embedding 仍用本地 Ollama
+                        embed_model="my-bge-m3",
                         base_url="http://localhost:11434"
                     )
 

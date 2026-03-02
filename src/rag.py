@@ -863,42 +863,53 @@ def ask_question(question: str, top_k: int = 3, user_name: str = None) -> dict:
     answer_with_compliance = response["answer"]
 
     # 延迟加载合规审查器
-    from src.compliance_checker import ComplianceChecker
     try:
-        if not hasattr(_get_compliance, 'instance'):
-            _get_compliance.instance = ComplianceChecker()
-        checker = _get_compliance.instance
+        from src.compliance_checker import ComplianceChecker
 
-        if checker:
-            try:
-                # 提取产品信息（从sources中获取）
-                product_info = "未知基金产品"
-                if sources:
-                    source_names = set(s.get("source", "") for s in sources)
-                    if source_names:
-                        product_names = [Path(s).stem for s in source_names if s != "unknown"]
-                        if product_names:
-                            product_info = ", ".join(product_names)
+        try:
+            if not hasattr(_get_compliance, 'instance'):
+                _get_compliance.instance = ComplianceChecker()
+            checker = _get_compliance.instance
 
-                # 调用合规审查
-                compliance_result = checker.check(
-                    question=question,
-                    answer=response["answer"],
-                    product_info=product_info
-                )
+            if checker:
+                try:
+                    # 提取产品信息（从sources中获取）
+                    product_info = "未知基金产品"
+                    if sources:
+                        source_names = set(s.get("source", "") for s in sources)
+                        if source_names:
+                            product_names = [Path(s).stem for s in source_names if s != "unknown"]
+                            if product_names:
+                                product_info = ", ".join(product_names)
 
-                # 在答案末尾添加合规标识
-                compliance_tag = _build_compliance_tag(compliance_result)
-                answer_with_compliance = response["answer"] + compliance_tag
+                    # 调用合规审查
+                    compliance_result = checker.check(
+                        question=question,
+                        answer=response["answer"],
+                        product_info=product_info
+                    )
 
-            except Exception as e:
-                print(f"合规审查出错: {e}")
-                compliance_result = {
-                    "is_compliant": None,
-                    "risk_level": "unknown",
-                    "violations": [],
-                    "summary": f"合规审查失败: {str(e)}"
-                }
+                    # 在答案末尾添加合规标识
+                    compliance_tag = _build_compliance_tag(compliance_result)
+                    answer_with_compliance = response["answer"] + compliance_tag
+
+                except Exception as e:
+                    print(f"合规审查出错: {e}")
+                    compliance_result = {
+                        "is_compliant": None,
+                        "risk_level": "unknown",
+                        "violations": [],
+                        "summary": f"合规审查失败: {str(e)}"
+                    }
+
+        except ImportError as e:
+            print(f"[WARN] ComplianceChecker 模块导入失败: {e}")
+            compliance_result = {
+                "is_compliant": None,
+                "risk_level": "unknown",
+                "violations": [],
+                "summary": "合规审查模块不可用"
+            }
 
     except ValueError as e:
         # API Key 未配置
@@ -910,12 +921,12 @@ def ask_question(question: str, top_k: int = 3, user_name: str = None) -> dict:
             "summary": "合规审查未配置"
         }
     except Exception as e:
-        print(f"合规审查初始化失败: {e}")
+        print(f"合规审查异常: {e}")
         compliance_result = {
             "is_compliant": None,
             "risk_level": "unknown",
             "violations": [],
-            "summary": f"合规审查异常: {str(e)}"
+            "summary": f"合规审查初始化失败: {str(e)}"
         }
 
     # 添加用户称呼（如果有）
@@ -1069,26 +1080,37 @@ def ask_question_stream(question: str, top_k: int, user_name: str = None):
 
     # 2. 合规审查（阻塞部分）
     compliance_result = None
-    from src.compliance_checker import ComplianceChecker
     try:
-        if not hasattr(_get_compliance, 'instance'):
-            _get_compliance.instance = ComplianceChecker()
-        checker = _get_compliance.instance
+        from src.compliance_checker import ComplianceChecker
 
-        if checker:
-            product_info = "未知基金产品"
-            if sources:
-                source_names = set(s.get("source", "") for s in sources)
-                if source_names:
-                    product_names = [Path(s).stem for s in source_names if s != "unknown"]
-                    if product_names:
-                        product_info = ", ".join(product_names)
+        try:
+            if not hasattr(_get_compliance, 'instance'):
+                _get_compliance.instance = ComplianceChecker()
+            checker = _get_compliance.instance
 
-            compliance_result = checker.check(
-                question=question,
-                answer=response["answer"],
-                product_info=product_info
-            )
+            if checker:
+                product_info = "未知基金产品"
+                if sources:
+                    source_names = set(s.get("source", "") for s in sources)
+                    if source_names:
+                        product_names = [Path(s).stem for s in source_names if s != "unknown"]
+                        if product_names:
+                            product_info = ", ".join(product_names)
+
+                compliance_result = checker.check(
+                    question=question,
+                    answer=response["answer"],
+                    product_info=product_info
+                )
+
+        except ImportError as e:
+            print(f"[WARN] ComplianceChecker 模块导入失败: {e}")
+            compliance_result = {
+                "is_compliant": None,
+                "risk_level": "unknown",
+                "violations": [],
+                "summary": "合规审查模块不可用"
+            }
 
     except ValueError as e:
         print(f"[WARN] {e}")
@@ -1099,12 +1121,12 @@ def ask_question_stream(question: str, top_k: int, user_name: str = None):
             "summary": "合规审查未配置"
         }
     except Exception as e:
-        print(f"合规审查初始化失败: {e}")
+        print(f"合规审查异常: {e}")
         compliance_result = {
             "is_compliant": None,
             "risk_level": "unknown",
             "violations": [],
-            "summary": f"合规审查异常: {str(e)}"
+            "summary": f"合规审查初始化失败: {str(e)}"
         }
 
     # 构建完整答案

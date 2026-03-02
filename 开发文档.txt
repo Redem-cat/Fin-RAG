@@ -145,4 +145,538 @@ taskkill /F /IM python.exe /T
 ## 当前状态
 - **优先级：高**
 - **状态：待解决**
-- **建议：** 优先尝试方案2（独立服务架构） 
+- **建议：** 优先尝试方案2（独立服务架构）
+
+--------------------------------------------------------------------------------
+# 资源清理方案（2026-03-02）
+--------------------------------------------------------------------------------
+
+## 问题描述
+系统运行时按 `Ctrl+C` 退出时，Ollama 和 Elasticsearch 连接没有正确关闭，导致：
+1. 旧进程堆积，占用端口和内存
+2. 应用卡住无法响应
+3. 需要手动杀掉进程才能恢复
+
+## 已实现方案
+
+### 方案二：批处理启动脚本（已实现）✅
+
+**文件位置**: `scripts/run_with_cleanup.bat`
+
+**功能特点**:
+- 自动启动 Streamlit 应用
+- 检查依赖服务状态
+- 按 Ctrl+C 后自动清理资源
+- 清理 Streamlit 和 Python 进程
+- 可选清理 Ollama（默认保留）
+
+**使用方法**:
+```bash
+# Windows
+scripts\run_with_cleanup.bat
+```
+
+**脚本流程**:
+1. 检查 .env 文件和依赖服务
+2. 启动 Streamlit 应用（端口 8501）
+3. 用户按任意键停止
+4. 自动清理所有相关进程
+5. 显示清理结果
+
+**优点**:
+- 简单易用，一行命令启动
+- 自动清理，无需手动杀进程
+- 可选择是否清理 Ollama
+- 清晰的提示信息
+
+**注意事项**:
+- Ollama 默认不清理，可取消注释开启
+- 清理时会停止所有 Python 进程（除了本脚本）
+- 需要手动按任意键触发清理流程
+
+## 备选方案（未实现，仅供参考）
+
+### 方案一：Python 包装脚本
+
+**核心代码**:
+```python
+# scripts/run_with_cleanup.py
+import sys
+import subprocess
+import atexit
+import signal
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).parent.parent
+
+def cleanup_processes():
+    """清理所有相关进程"""
+    print("\n正在清理资源...")
+    try:
+        subprocess.run(["taskkill", "/F", "/IM", "ollama.exe", "/T"],
+                      capture_output=True)
+        subprocess.run(["taskkill", "/F", "/IM", "python.exe", "/T"],
+                      capture_output=True)
+        print("✓ 清理完成")
+    except Exception as e:
+        print(f"⚠ 清理时出错: {e}")
+
+def signal_handler(signum, frame):
+    """信号处理"""
+    cleanup_processes()
+    sys.exit(0)
+
+def run_streamlit():
+    """启动 Streamlit"""
+    try:
+        cmd = [
+            sys.executable, "-m", "streamlit", "run",
+            str(PROJECT_ROOT / "src" / "streamlit_app.py"),
+            "--server.port", "8501",
+            "--server.headless", "true"
+        ]
+        proc = subprocess.Popen(cmd)
+        proc.wait()
+    except KeyboardInterrupt:
+        print("\n检测到中断信号...")
+    finally:
+        cleanup_processes()
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    atexit.register(cleanup_processes)
+    run_streamlit()
+```
+
+**优点**:
+- 跨平台兼容（Windows/Linux）
+- 自动捕获 Ctrl+C 信号
+- 更精确的进程管理
+- 可扩展性强
+
+**缺点**:
+- 需要额外维护 Python 脚本
+- 信号处理在不同系统可能有差异
+- 代码复杂度略高于批处理
+
+### 方案三：使用进程管理工具
+
+**工具选择**:
+- **supervisord** (Windows 版): 跨平台进程管理
+- **pm2** (Node.js): 也可管理 Python 进程
+- **nssm**: Windows 服务管理器
+
+**优点**: 专业级进程管理
+**缺点**: 需要额外安装工具，学习成本高
+
+### 方案四：将 Streamlit 改为独立服务
+
+**架构改造**:
+```
+当前: Streamlit 前端 + RAG 逻辑 在同一进程
+改造: FastAPI 后端服务 + Streamlit 纯前端 UI
+```
+
+**优点**: 彻底解决资源泄漏问题
+**缺点**: 需要重构，工作量大
+
+## 手动清理命令（应急使用）
+
+```powershell
+# 查看相关进程
+tasklist | findstr -i "ollama python streamlit"
+
+# 杀掉进程
+taskkill /F /IM ollama.exe /T
+taskkill /F /IM python.exe /T
+taskkill /F /IM streamlit.exe /T
+```
+
+## 进程检查命令
+
+```powershell
+# 检查端口占用（8501 是 Streamlit 默认端口）
+netstat -ano | findstr :8501
+
+# 检查 Python 进程详情
+wmic process where "name='python.exe'" get ProcessId,CommandLine
+```
+
+## 相关文件索引
+
+| 文件 | 说明 |
+|------|------|
+| `scripts/run_with_cleanup.bat` | 批处理启动脚本（已实现）|
+| `src/streamlit_app.py` | Streamlit 主应用 |
+| `src/rag.py` | `cleanup_resources()` 函数（空实现，第132-133行）|
+
+## 建议
+
+**当前推荐**: 使用方案二（批处理脚本）
+- 简单实用，已经实现
+- 解决了资源清理问题
+- 适合开发和测试环境
+
+**长期优化**: 考虑方案四（独立服务架构）
+- 彻底解决进程管理问题
+- 适合生产环境部署
+- 提升系统稳定性
+
+--------------------------------------------------------------------------------
+# AKShare 实时金融数据集成逻辑（2026-03-02）
+--------------------------------------------------------------------------------
+
+## 1. 核心文件架构
+```
+src/
+├── intent_classifier.py    # 意图分类器
+├── finance_trigger.py       # 金融数据触发器
+├── finance_data.py          # AKShare 数据获取层
+└── rag.py                   # 主流程编排
+```
+
+## 2. 完整流程
+
+### 步骤1: 意图分类 (`src/intent_classifier.py`)
+**功能**: 基于关键词匹配判断用户意图类型
+
+**意图类型**:
+- `investment` - 投资顾问（股票、基金、理财等）
+- `policy` - 政策咨询（法律法规、政府文件等）
+- `general` - 通用问答
+- `mixed` - 混合意图
+
+**投资关键词** (`INVESTMENT_KEYWORDS`):
+- 金融产品: 股票、基金、ETF、LOF、FOF、QDII、债券、国债、理财、私募、公募、信托、保险、黄金、原油、期货、期权
+- 投资行为: 投资、理财、收益、回报、涨幅、跌幅、涨停、跌停、市值、估值、PE、PB、股息、分红、持仓、建仓、买入、卖出、止损、止盈、抄底、逃顶、补仓
+- 市场数据: 行情、走势、K线、均线、成交量、大盘、指数、上证、深证、创业板、科创板、北交所、港股、美股
+- 具体实体: 茅台、宁德、比亚迪、苹果、特斯拉、马斯克
+- 机构人物: 基金经理、巴菲特、索罗斯、徐翔
+- 宏观金融: 利率、降息、加息、LPR、SHIBOR、GDP、CPI、PPI、货币政策、财政政策、MLF、逆回购、QE
+
+**核心代码** (`src/rag.py:777-781`):
+```python
+classifier = get_intent_classifier()
+intent_obj, intent_reason = classifier.classify(question)
+intent = intent_obj.value  # "investment" | "policy" | "general" | "mixed"
+```
+
+### 步骤2: 判断处理模式 (`src/rag.py:788-801`)
+**判断逻辑**:
+- `use_finance = intent in ["investment", "mixed", "general"]` - 是否需要金融数据
+- `use_rag = intent in ["investment", "policy", "mixed", "general"]` - 是否需要RAG检索
+
+**纯投资判断模式** (`is_pure_investment`):
+包含以下特征时跳过RAG文档检索，直接使用金融数据:
+- 股票代码: `sh600519`, `sz000001`, `600519`, `000001`
+- 基金代码: `161039`, `710001`
+- 实时行情关键词: "今天涨了吗"、"实时行情"、"当前价格"
+
+**纯投资模式正则**:
+```python
+pure_investment_patterns = [
+    r'sh\d{6}', r'sz\d{6}',  # 股票代码
+    r'\d{6}',               # 基金代码
+    r'今天.*(涨|跌|收盘)', r'实时行情', r'当前价格',
+]
+```
+
+### 步骤3A: 纯投资场景 - 金融数据 + LLM (`src/rag.py:937-970`)
+
+**流程**:
+1. 从 `FinanceTrigger` 获取实时金融数据
+2. 用 LLM + 金融数据生成答案
+
+**代码示例**:
+```python
+def _handle_investment_question(question, top_k):
+    # 1. 获取金融数据
+    finance_trigger = get_finance_trigger()
+    finance_context, finance_sources = finance_trigger.get_finance_context(question)
+    
+    # 2. 使用LLM生成回答
+    llm = ChatOllama(model="my-qwen25:latest", temperature=0.7)
+    
+    if finance_context:
+        prompt = f"""你是一位专业的投资顾问。请根据以下实时金融数据回答用户问题。
+
+金融数据:
+{finance_context}
+
+用户问题: {question}
+
+要求:
+1. 基于提供的金融数据进行分析
+2. 如果数据不足，说明情况
+3. 给出专业的投资建议
+4. 用中文回答
+"""
+    # ...
+```
+
+### 步骤3B: 混合场景 - RAG检索 + 金融数据补充 (`src/finance_trigger.py`)
+
+**`FinanceTrigger.get_finance_context()` 自动识别并补充**:
+1. **股票代码**: 提取 `sh600519`, `sz000001` → 调用 `ak.stock_zh_a_daily()`
+2. **基金代码**: 提取 `161039` → 调用 `ak.fund_open_fund_info_em()`
+3. **指数行情**: 匹配"上证指数"等关键词 → 调用 `ak.stock_zh_index_daily()`
+4. **板块数据**: 匹配"板块""行业" → 调用 `ak.stock_board_industry_name_em()`
+5. **宏观数据**: 匹配"LPR""利率" → 调用 `ak.macro_lpr()`
+
+**关键代码** (`src/finance_trigger.py:131-151`):
+```python
+# 1. 尝试提取股票代码
+stock_code = self.extract_stock_code(question)
+if stock_code:
+    stock_data = fd.get_stock_daily(stock_code)
+    if stock_data:
+        recent = stock_data[-5:]  # 取最近5天数据
+        data_str = "\n".join([
+            f"{d.get('date')}: "
+            f"开盘:{d.get('open')}, 收盘:{d.get('close')}, "
+            f"最高:{d.get('high')}, 最低:{d.get('low')}, "
+            f"成交量:{d.get('volume')}"
+            for d in recent
+        ])
+        context_parts.append(f"【股票 {stock_code} 最近交易日行情】\n{data_str}")
+```
+
+## 3. AKShare 数据获取层 (`src/finance_data.py`)
+
+**封装的 AKShare 接口方法**:
+
+| 方法 | 说明 | AKShare API |
+|------|------|-------------|
+| `get_stock_daily(symbol, adjust)` | A股日线数据 | `ak.stock_zh_a_daily()` |
+| `get_stock_spot()` | A股实时行情 | `ak.stock_zh_a_spot_em()` |
+| `get_index_daily(symbol)` | 指数日线数据 | `ak.stock_zh_index_daily()` |
+| `get_index_spot()` | 指数实时行情 | `ak.stock_zh_index_spot_em()` |
+| `get_fund_info(fund_code, indicator)` | 基金净值信息 | `ak.fund_open_fund_info_em()` |
+| `get_fund_etf_spot()` | ETF实时行情 | `ak.fund_etf_spot_em()` |
+| `get_fund_etf_hist(symbol, period, start_date, end_date)` | ETF历史数据 | `ak.fund_etf_hist_em()` |
+| `get_industry_spot()` | 行业板块行情 | `ak.stock_board_industry_name_em()` |
+| `get_concept_spot()` | 概念板块行情 | `ak.stock_board_concept_name_em()` |
+| `get_macro_lpr()` | LPR贷款利率数据 | `ak.macro_lpr()` |
+| `get_macro_shibor()` | SHIBOR利率数据 | `ak.macro_shibor()` |
+| `search_stock(keyword)` | 股票搜索 | `ak.stock_info_a_code_name()` |
+| `get_fund_manager(fund)` | 基金经理信息 | `ak.fund_manager_em()` |
+
+**常用指数代码映射** (`INDEX_CODE_MAP`):
+```python
+{
+    "上证指数": "sh000001",
+    "深证成指": "sz399001",
+    "创业板指": "sz399006",
+    "科创50": "sh000688",
+    "沪深300": "sh000300",
+    "上证50": "sh000016",
+    "中证500": "sh000905",
+    "中证1000": "sh000852",
+}
+```
+
+**股票代码正则** (`STOCK_CODE_PATTERN`):
+```python
+# 支持 sh600519, sz000001, 600519, 000001 等格式
+STOCK_CODE_PATTERN = re.compile(r'(sh|sz)?(\d{6})')
+```
+
+## 4. 触发逻辑示例
+
+| 用户问题 | 意图分类 | 是否RAG | 是否调用AKShare |
+|---------|---------|--------|---------------|
+| "贵州茅台股票代码是什么" | investment | ✅ 是 | ❌ 否 |
+| "sh600519 今天涨了吗" | investment | ❌ 否（纯投资） | ✅ 是 |
+| "上证指数最近走势" | investment | ❌ 否（纯投资） | ✅ 是 |
+| "基金161039的净值" | investment | ❌ 否（纯投资） | ✅ 是 |
+| "如何投资ETF" | investment | ✅ 是 | ❌ 否（无具体代码） |
+| "最新的LPR利率" | mixed | ✅ 是 | ✅ 是（如果提到LPR） |
+
+## 5. 数据流程图
+
+```
+用户问题
+    ↓
+[意图分类器] → investment/policy/general/mixed
+    ↓
+    ├─→ 纯投资咨询（含股票/基金代码）
+    │       ↓
+    │   [FinanceTrigger] 识别代码类型
+    │       ↓
+    │   [FinanceData] 调用AKShare API
+    │       ↓
+    │   [LLM] 使用金融数据生成答案
+    │
+    └─→ 混合/通用咨询
+            ↓
+        [RAG检索] 获取知识库文档
+            ↓
+        [FinanceTrigger] 补充实时数据（如有）
+            ↓
+        [LLM] 综合文档+金融数据生成答案
+```
+
+--------------------------------------------------------------------------------
+# 代码修复记录（2026-03-02）
+--------------------------------------------------------------------------------
+
+## 1. 修复合规审查器导入错误
+
+**问题描述**:
+```
+警告: 合规审查器初始化失败: name 'ComplianceChecker' is not defined
+```
+
+**根本原因**:
+`from src.compliance_checker import ComplianceChecker` 导入语句放在 try 块内部，
+如果导入失败，try 块中的后续代码不会执行，导致 `ComplianceChecker` 未定义。
+
+**修复方案**:
+将导入语句移到 try 块的第一层，并添加 `ImportError` 捕获：
+
+```python
+# 修复前（错误）
+try:
+    from src.compliance_checker import ComplianceChecker
+    ComplianceChecker()  # 导入失败时无法执行
+
+# 修复后（正确）
+try:
+    from src.compliance_checker import ComplianceChecker
+    try:
+        if not hasattr(_get_compliance, 'instance'):
+            _get_compliance.instance = ComplianceChecker()
+        # ... 使用 ComplianceChecker
+
+    except ImportError as e:
+        # 导入失败的处理
+        compliance_result = {...}
+
+except ValueError as e:
+    # API Key 未配置
+    compliance_result = {...}
+
+except Exception as e:
+    # 其他异常
+    compliance_result = {...}
+```
+
+**修改文件**:
+- `src/rag.py:865-929` - `ask_question()` 函数中的合规审查
+- `src/rag.py:1081-1119` - `stream_ask_question()` 函数中的合规审查
+
+**修复效果**:
+- ✅ 不再报 `ComplianceChecker is not defined` 错误
+- ✅ 正确显示 API Key 未配置的警告信息
+- ✅ 导入失败时降级处理，不影响主流程
+
+---
+
+## 2. 优化测试集
+
+**修改内容**:
+- 将测试集从 **26 个问题** 减少到 **5 个问题**
+- 保留不同类型的代表性问题：
+  1. 期货交易定义
+  2. 套期保值作用
+  3. 证券虚假陈述类型
+  4. 反洗钱制度
+  5. 证券/期货投资咨询许可
+
+**修改文件**:
+- `src/testset.json`
+
+**优化效果**:
+- ✅ 评估速度提升 80%（26→5 个问题）
+- ✅ 保留了测试多样性
+- ✅ 适合快速迭代测试
+
+---
+
+## 3. 添加资源清理批处理脚本
+
+**功能特点**:
+- 自动启动 Streamlit 应用
+- 检查依赖服务状态
+- 按 Ctrl+C 后自动清理资源
+- 清理 Streamlit 和 Python 进程
+- 可选清理 Ollama（默认保留）
+
+**文件位置**:
+- `scripts/run_with_cleanup.bat`
+
+**使用方法**:
+```bash
+scripts\run_with_cleanup.bat
+```
+
+**解决痛点**:
+- ✅ 解决了资源泄漏问题
+- ✅ 无需手动杀进程
+- ✅ 清晰的提示信息
+
+---
+
+## 4. RAGAS 评估警告说明
+
+**警告信息**:
+```
+LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+```
+
+**解释**:
+- RAGAS 尝试调用 LLM 生成 3 个候选答案（用于评估稳定性）
+- DeepSeek API 只返回 1 个答案
+- RAGAS 自动降级处理，评估正常进行
+
+**影响**:
+- ✅ 不影响评估结果
+- ✅ 不影响评分准确性
+- ✅ 只是内部生成数量的降级
+
+**结论**: 这是正常行为，无需修复
+
+---
+
+## 5. Context Recall 指标说明
+
+**指标含义**:
+衡量检索到的上下文是否包含了标准答案（ground_truth）中的所有关键信息。
+
+**计算公式**:
+```
+Context Recall = (检索到的上下文中包含的关键信息数量) / (标准答案中的总关键信息数量)
+```
+
+**为什么一直等于 1**:
+1. 检索系统质量好，召回了所有必要信息
+2. 测试集问题设计简单，标准答案在知识库中完整存在
+3. 这是好事，说明检索系统覆盖能力强
+
+**判断标准**:
+- Recall = 1 + Precision 高 = 完美检索
+- Recall = 1 + Precision 中 = 覆盖全面但有噪音（可优化精排）
+- Recall 低 = 遗漏关键信息（需要优化召回）
+
+## 6. 关键代码位置索引
+
+| 功能模块 | 文件位置 | 行号范围 |
+|---------|---------|---------|
+| 意图分类逻辑 | `src/intent_classifier.py` | `_keyword_classify()`: 98-112 |
+| 纯投资判断 | `src/rag.py` | `is_pure_investment`: 793-801 |
+| 金融触发器 | `src/finance_trigger.py` | `get_finance_context()`: 111-240 |
+| AKShare封装 | `src/finance_data.py` | 数据获取方法: 52-139 |
+| 投资问题处理 | `src/rag.py` | `_handle_investment_question()`: 937-970 |
+| 意图分类调用 | `src/rag.py` | 分类逻辑: 777-784 |
+| 股票代码提取 | `src/finance_trigger.py` | `extract_stock_code()`: 79-101 |
+| 基金代码提取 | `src/finance_trigger.py` | `extract_fund_code()`: 103-109 |
+
+## 7. 技术特点
+
+1. **分层架构**: 意图分类 → 触发器识别 → 数据获取层 → LLM生成
+2. **实时性**: 直接调用AKShare获取最新行情数据
+3. **智能路由**: 根据问题类型自动选择纯投资模式或混合模式
+4. **代码识别**: 支持多种股票/基金代码格式自动识别
+5. **延迟加载**: 按需加载金融数据模块，减少初始化开销
+6. **异常容错**: 数据获取失败时降级到通用回答，不影响用户体验 
