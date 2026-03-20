@@ -66,6 +66,8 @@ class RAGEvaluator:
             )
             # 使用 llm_factory 创建 InstructorLLM
             self.llm = llm_factory(model_name, client=client)
+            # DeepSeek 不支持 n>1，需要在 run_config 中设置
+            self._is_deepseek = True
         elif llm_provider == "ollama":
             # Ollama 也需要通过 OpenAI 兼容接口
             client = OpenAI(
@@ -73,6 +75,7 @@ class RAGEvaluator:
                 base_url=f"{base_url}/v1"
             )
             self.llm = llm_factory(model_name, client=client)
+            self._is_deepseek = False
         else:
             raise ValueError(f"不支持的 LLM 提供商: {llm_provider}")
 
@@ -88,6 +91,7 @@ class RAGEvaluator:
             raise ValueError(f"不支持的 Embedding 提供商: {embed_provider}")
 
         self.eval_results = None
+        self._is_deepseek = getattr(self, '_is_deepseek', False)
 
     def load_testset(self, testset_path: str) -> List[Dict[str, Any]]:
         """加载测试集
@@ -211,18 +215,26 @@ class RAGEvaluator:
         # 执行评估
         print(f"执行评估，指标: {metrics}")
         # 创建 RunConfig
+        # DeepSeek 不支持 n>1，会导致警告，所以设置较高的超时时间
         run_config = RunConfig(timeout=60, max_retries=2)
 
-        result = evaluate(
-            dataset=dataset,
-            metrics=selected_metrics,
-            llm=self.llm,
-            embeddings=self.embeddings,  # 使用本地 Ollama 嵌入模型
-            run_config=run_config,
-        )
+        # 禁用 RAGAS 的多生成请求（DeepSeek 不支持）
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # 忽略警告
+            result = evaluate(
+                dataset=dataset,
+                metrics=selected_metrics,
+                llm=self.llm,
+                embeddings=self.embeddings,  # 使用本地 Ollama 嵌入模型
+                run_config=run_config,
+            )
 
         # 转换为 DataFrame
         df = result.to_pandas()
+
+        # 处理 NaN 值：将 NaN 替换为 None（JSON 中会变为 null）
+        df = df.where(pd.notnull(df), None)
 
         # 保存结果
         self.eval_results = {
@@ -230,7 +242,7 @@ class RAGEvaluator:
             "metrics": metrics,
             "scores": df.to_dict(orient="records"),
             "summary": {
-                metric: df[metric].mean()
+                metric: float(df[metric].mean()) if pd.notnull(df[metric].mean()) else None
                 for metric in metrics
                 if metric in df.columns
             },

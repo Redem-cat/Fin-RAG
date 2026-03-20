@@ -263,8 +263,17 @@ llm = ChatOllama(model="my-qwen25", temperature=0.0000000001)
 
 # 合规审查器（使用 DeepSeek API）
 try:
+    from src.compliance_checker import ComplianceChecker
     compliance_checker = ComplianceChecker()
     COMPLIANCE_ENABLED = True
+except ImportError as e:
+    print(f"警告: ComplianceChecker 模块导入失败: {e}")
+    COMPLIANCE_ENABLED = False
+    compliance_checker = None
+except ValueError as e:
+    print(f"警告: 合规审查器初始化失败: {e}")
+    COMPLIANCE_ENABLED = False
+    compliance_checker = None
 except Exception as e:
     print(f"警告: 合规审查器初始化失败: {e}")
     COMPLIANCE_ENABLED = False

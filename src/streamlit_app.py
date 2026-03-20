@@ -16,7 +16,7 @@ from src.reporter import EvaluationReporter
 import src.auth as auth
 from src.onboarding import get_onboarding_message, should_show_onboarding, mark_onboarding_complete, is_onboarding_complete, process_onboarding_response
 
-st.set_page_config(page_title="RAG", layout="wide", page_icon="")
+st.set_page_config(page_title="FinRAG-Advisor", layout="wide", page_icon="")
 
 st.markdown("""
 <style>
@@ -371,6 +371,8 @@ def display_chat_message(role, content, sources=None, msg_index=None, used_conte
                 compliance_hint = '<span class="status-compliance">[合规]</span>'
             elif is_compliant is False:
                 compliance_hint = '<span class="status-compliance-risk">[风险]</span>'
+            else:
+                compliance_hint = '<span class="status-warning">[未知]</span>'
 
         st.markdown(f"""
         <div class="assistant-message">
@@ -393,7 +395,7 @@ def display_chat_message(role, content, sources=None, msg_index=None, used_conte
                     </span>
                 </div>
                 """, unsafe_allow_html=True)
-                st.text_area("", content_full, height=100, key=f"source_{msg_index}_{i}", label_visibility="collapsed")
+                st.text_area("Source Content", content_full, height=100, key=f"source_{msg_index}_{i}", label_visibility="collapsed")
 
 
 def init_session_state():
@@ -425,7 +427,7 @@ def render_auth_sidebar():
     
     st.caption("LOGIN TO SAVE HISTORY")
     
-    auth_mode = st.radio("", ["LOGIN", "REGISTER"], horizontal=True, label_visibility="collapsed")
+    auth_mode = st.radio("Auth Mode", ["LOGIN", "REGISTER"], horizontal=True, label_visibility="collapsed")
     
     if auth_mode == "LOGIN":
         with st.form("login"):
@@ -469,7 +471,7 @@ def render_auth_sidebar():
 
 
 def chat_page():
-    st.markdown('<h1 class="main-header">RAG</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">FinRAG-Advisor</h1>', unsafe_allow_html=True)
     init_session_state()
 
     with st.sidebar:
@@ -831,12 +833,28 @@ def evaluation_page():
 
 def main():
     init_session_state()
-    
+
     page = st.navigation([
         st.Page(chat_page, title="CHAT"),
         st.Page(evaluation_page, title="EVAL"),
     ])
     page.run()
+
+    # 右下角版权信息
+    st.markdown("""
+    <style>
+    .footer-text {
+        position: fixed;
+        bottom: 10px;
+        right: 20px;
+        color: #9ca3af;
+        font-size: 0.75rem;
+        font-weight: 400;
+        z-index: 9999;
+    }
+    </style>
+    <div class="footer-text">本科毕设 —— 刘宗奇</div>
+    """, unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
