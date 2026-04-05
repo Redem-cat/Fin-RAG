@@ -27,6 +27,81 @@ except ImportError:
     RERANKER_AVAILABLE = False
     print("警告: sentence-transformers 未安装，精排功能不可用")
 
+# 尝试导入触发系统
+try:
+    from src.trigger_system import get_trigger_manager, TriggerResult
+    TRIGGER_SYSTEM_AVAILABLE = True
+except ImportError as e:
+    TRIGGER_SYSTEM_AVAILABLE = False
+    print(f"警告: 触发系统模块导入失败: {e}")
+
+# 尝试导入知识图谱模块
+try:
+    from src.knowledge_graph import (
+        get_kg_retriever,
+        hybrid_retrieval,
+        KG_ENABLED,
+        check_kg_status
+    )
+    KG_SYSTEM_AVAILABLE = True
+    # 检查 KG 是否实际可用
+    kg_status, _ = check_kg_status()
+    if not kg_status:
+        KG_SYSTEM_AVAILABLE = False
+        print("警告: Neo4j 未连接，知识图谱功能不可用")
+except ImportError as e:
+    KG_SYSTEM_AVAILABLE = False
+    print(f"警告: 知识图谱模块导入失败: {e}")
+except Exception as e:
+    KG_SYSTEM_AVAILABLE = False
+    print(f"警告: 知识图谱初始化失败: {e}")
+
+
+# =========================
+# 🔹 HyDE 配置
+# =========================
+HYDE_ENABLED = os.getenv("HYDE_ENABLED", "false").lower() == "true"
+HYDE_GENERATE_PROMPT = PromptTemplate.from_template(
+    template="""你是一个专业的金融文档撰写助手。请根据用户的问题，生成一段假设性的文档内容。
+
+用户问题: {question}
+
+要求:
+1. 生成的文档应该像是从权威金融资料或基金招募说明书中提取的内容
+2. 包含与问题相关的专业术语和概念解释
+3. 使用正式、专业的语言风格
+4. 内容长度适中（100-200字）
+5. 回答应该准确、专业，避免模糊表述
+
+假设性文档:"""
+)
+
+
+def generate_hypothetical_document(question: str, llm_model: ChatOllama = None) -> str:
+    """
+    使用 LLM 生成假设性文档（HyDE 核心）
+    
+    Args:
+        question: 用户问题
+        llm_model: LLM 模型实例
+        
+    Returns:
+        str: 假设性文档内容
+    """
+    if llm_model is None:
+        llm_model = _get_llm()
+    
+    prompt = HYDE_GENERATE_PROMPT.format(question=question)
+    
+    try:
+        response = llm_model.invoke(prompt)
+        hypothetical_doc = response.content if hasattr(response, 'content') else str(response)
+        print(f"[HyDE] 生成了假设性文档，长度: {len(hypothetical_doc)} 字符")
+        return hypothetical_doc
+    except Exception as e:
+        print(f"[HyDE] 生成假设性文档失败: {e}")
+        return question  # 降级：使用原始问题
+
 # =========================
 # 🔹 检索日志管理器
 # =========================
@@ -500,14 +575,13 @@ class MemoryManager:
 
 # =========================
 # 🔹 初始化组件
+# 注意：ElasticsearchStore 和 MemoryManager 使用延迟初始化
+# 延迟加载可以避免在 Elasticsearch 未启动时应用无法启动
 # =========================
-memory_manager = MemoryManager()
+memory_manager = None  # 延迟初始化
 
-vector_db = ElasticsearchStore(
-    es_url=os.getenv('ES_LOCAL_URL'),
-    embedding=embeddings,
-    index_name=index_name
-)
+# 注意：不要在这里直接初始化 ElasticsearchStore！
+# 它会在首次使用时通过 _get_vector_db() 延迟初始化
 
 # 定义 Prompt（包含对话历史）
 prompt_template = PromptTemplate.from_template(
@@ -540,7 +614,7 @@ class State(TypedDict):
 
 # 定义应用步骤
 def retrieve(state: State):
-    """检索相关文档和对话历史（包含精排）"""
+    """检索相关文档和对话历史（包含精排 + HyDE）"""
     top_k = state.get("top_k", 3)
     question = state["question"]
     
@@ -548,10 +622,20 @@ def retrieve(state: State):
     vdb = _get_vector_db()
     memory = _get_memory_manager()
     
+    # HyDE: 如果启用，先生成假设性文档
+    hypothetical_doc = ""
+    retrieval_query = question
+    if HYDE_ENABLED:
+        print("[HyDE] 正在生成假设性文档...")
+        llm_model = _get_llm()
+        hypothetical_doc = generate_hypothetical_document(question, llm_model)
+        retrieval_query = hypothetical_doc
+        print(f"[HyDE] 检索词从原始问题切换为假设性文档")
+    
     # 步骤1: 向量检索召回候选文档
     # 召回更多候选，用于精排
     candidate_count = max(RERANK_CANDIDATE_COUNT, top_k * 3)
-    retrieved_docs_with_scores = vdb.similarity_search_with_score(question, k=candidate_count)
+    retrieved_docs_with_scores = vdb.similarity_search_with_score(retrieval_query, k=candidate_count)
     
     # 提取文档（不区分原始分数）
     retrieved_docs = []
@@ -577,7 +661,10 @@ def retrieve(state: State):
     # 检索相关对话历史
     relevant_history = memory.retrieve_relevant_history(question, top_k=3)
     
-    return {"context": reranked_docs, "history": relevant_history}
+    # 如果启用了 HyDE，将假设性文档也传给后续步骤
+    extra_data = {"hyde_doc": hypothetical_doc} if HYDE_ENABLED else {}
+    
+    return {"context": reranked_docs, "history": relevant_history, **extra_data}
 
 
 def generate(state: State):
@@ -777,6 +864,41 @@ def ask_question(question: str, top_k: int = 3, user_name: str = None) -> dict:
         dict: 包含 answer, source, question, used_context, intent
     """
     # =========================
+    # 🔹 步骤0: 触发系统分析
+    # =========================
+    trigger_results = []
+    kg_context = ""
+    kg_sources = []
+    if TRIGGER_SYSTEM_AVAILABLE:
+        try:
+            trigger_manager = get_trigger_manager()
+            trigger_results = trigger_manager.analyze(question)
+
+            # 打印触发结果日志
+            for result in trigger_results:
+                if result:
+                    print(f"[触发] {result.trigger_type}: {result.reason} (置信度: {result.confidence:.2f})")
+
+                    # 如果触发了 KG，执行知识图谱检索
+                    if result.trigger_type == "kg" and KG_SYSTEM_AVAILABLE:
+                        try:
+                            retriever = get_kg_retriever()
+                            kg_result = retriever.query(question)
+                            if kg_result.entities:
+                                kg_context = f"\n\n【知识图谱分析】\n{kg_result.explanation}\n"
+                                for entity in kg_result.entities[:5]:
+                                    kg_context += f"- {entity.get('name', '')} ({entity.get('type', '')})"
+                                    if 'relation' in entity:
+                                        kg_context += f" - {entity['relation']}"
+                                    kg_context += "\n"
+                                kg_sources.append({"type": "knowledge_graph", "confidence": kg_result.confidence})
+                                print(f"[KG] 检索到 {len(kg_result.entities)} 个实体")
+                        except Exception as e:
+                            print(f"[KG] 检索失败: {e}")
+        except Exception as e:
+            print(f"[触发系统] 分析失败: {e}")
+    
+    # =========================
     # 🔹 步骤1: 意图分类
     # =========================
     intent = "general"
@@ -950,7 +1072,11 @@ def ask_question(question: str, top_k: int = 3, user_name: str = None) -> dict:
         "used_context": used_context,
         "compliance": compliance_result,
         "intent": intent,
-        "intent_reason": intent_reason
+        "intent_reason": intent_reason,
+        "triggers": [r.to_dict() if hasattr(r, 'to_dict') else r for r in trigger_results],
+        "kg_context": kg_context,
+        "kg_sources": kg_sources,
+        "has_kg_results": bool(kg_context)
     }
 
 

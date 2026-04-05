@@ -1,20 +1,39 @@
 """
-意图分类模块 - 使用LLM判断用户意图（投资顾问 vs 政策咨询）
+意图分类模块 - 从 .env 读取关键词配置
+支持: INVESTMENT(投资顾问) vs POLICY(政策咨询)
 """
 
+import os
 import re
 from typing import Tuple, List
 from enum import Enum
+from dotenv import load_dotenv
+
+# 加载环境变量
+base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(base_path, "elastic-start-local/.env"))
+
 
 class Intent(Enum):
     """用户意图枚举"""
     INVESTMENT = "investment"      # 投资顾问（股票、基金、理财等）
-    POLICY = "policy"            # 政策咨询（法律法规、政府文件等）
-    GENERAL = "general"          # 通用问答
-    MIXED = "mixed"              # 混合意图
+    POLICY = "policy"              # 政策咨询（法律法规、政府文件等）
+    GENERAL = "general"            # 通用问答
+    MIXED = "mixed"               # 混合意图
 
-# 投资相关关键词
-INVESTMENT_KEYWORDS = [
+
+def _load_keywords_from_env(env_key: str, default: List[str]) -> List[str]:
+    """从环境变量加载关键词列表"""
+    keywords_str = os.getenv(env_key, "")
+    if keywords_str:
+        return [k.strip() for k in keywords_str.split(",") if k.strip()]
+    return default
+
+
+# =========================
+# 🔹 投资相关关键词（可从 .env 覆盖）
+# =========================
+DEFAULT_INVESTMENT_KEYWORDS = [
     # 金融产品
     "股票", "基金", "ETF", "LOF", "FOF", "QDII", "债券", "国债", "理财",
     "私募", "公募", "信托", "保险", "黄金", "原油", "期货", "期权",
@@ -34,8 +53,16 @@ INVESTMENT_KEYWORDS = [
     "货币政策", "财政政策", "MLF", "逆回购", "QE",
 ]
 
-# 政策相关关键词
-POLICY_KEYWORDS = [
+INVESTMENT_KEYWORDS = _load_keywords_from_env(
+    "INTENT_KEYWORDS_INVESTMENT", 
+    DEFAULT_INVESTMENT_KEYWORDS
+)
+
+
+# =========================
+# 🔹 政策相关关键词（可从 .env 覆盖）
+# =========================
+DEFAULT_POLICY_KEYWORDS = [
     # 法律类型
     "法律", "法规", "条例", "规章", "办法", "规定", "细则",
     "司法解释", "指导意见", "通知", "公告", "批复", "函",
@@ -43,13 +70,18 @@ POLICY_KEYWORDS = [
     "政策", "方针", "路线", "战略", "规划", "方案", "计划",
     "改革", "试点", "示范", "创新", "扶持", "补贴", "优惠",
     # 政府机构
-    "国务院", "证监会", "银保监会", "央行", "财政部", "发改委",
-    "证监会", "交易所", "证监会", "金融监管",
+    "国务院", "银保监会", "央行", "财政部", "发改委",
+    "证监会", "交易所", "金融监管",
     # 文件类型
     "文件", "白皮书", "蓝皮书", "报告", "皮书", "年鉴",
     # 行为词
     "违法", "合规", "违规", "处罚", "追究", "责任", "权利", "义务",
 ]
+
+POLICY_KEYWORDS = _load_keywords_from_env(
+    "INTENT_KEYWORDS_POLICY", 
+    DEFAULT_POLICY_KEYWORDS
+)
 
 
 class IntentClassifier:
@@ -62,7 +94,6 @@ class IntentClassifier:
         """延迟加载LLM"""
         if self.llm is None:
             from langchain_ollama import ChatOllama
-            # 使用可用的模型
             self.llm = ChatOllama(
                 model="my-qwen25:latest",
                 temperature=0.1
@@ -70,29 +101,8 @@ class IntentClassifier:
         return self.llm
     
     def classify(self, question: str) -> Tuple[Intent, str]:
-        """
-        分类用户意图
-        
-        Args:
-            question: 用户问题
-            
-        Returns:
-            (意图类型, 分类理由)
-        """
-        # 优先使用关键词分类（快速且可靠）
+        """分类用户意图"""
         intent, reason = self._keyword_classify(question)
-        
-        # 混合意图时尝试LLM细化（可选）
-        # 注意：LLM调用可能较慢或失败，暂时禁用
-        # if intent == Intent.MIXED:
-        #     try:
-        #         llm_intent, llm_reason = self._llm_classify(question)
-        #         if llm_intent != Intent.GENERAL:
-        #             intent = llm_intent
-        #             reason = llm_reason
-        #     except:
-        #         pass
-        
         return intent, reason
     
     def _keyword_classify(self, question: str) -> Tuple[Intent, str]:
@@ -132,7 +142,6 @@ REASON: [简短说明理由，不超过30字]
             response = llm.invoke(prompt)
             content = response.content if hasattr(response, 'content') else str(response)
             
-            # 解析结果
             intent_match = re.search(r'INTENT:\s*(\w+)', content, re.IGNORECASE)
             reason_match = re.search(r'REASON:\s*(.+?)(?:\n|$)', content, re.IGNORECASE)
             

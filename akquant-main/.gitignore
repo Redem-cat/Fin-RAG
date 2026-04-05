@@ -1,0 +1,33 @@
+target/
+site/
+refs/
+__pycache__/
+*.so
+*.dylib
+*.dSYM/
+*.pyd
+*.pdb
+.env
+.venv
+venv/
+.DS_Store
+uv.lock
+
+# IDEs
+.idea/
+.vscode/
+.trae/
+*.swp
+
+# Python distribution
+dist/
+build/
+*.egg-info/
+
+# Logs
+*.log
+*.err
+
+# Local cargo config
+.cargo/config.toml
+/data_catalog/

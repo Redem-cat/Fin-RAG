@@ -1,0 +1,41 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--unsafe]
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.14
+    hooks:
+      - id: ruff
+        args: [ --fix ]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.19.1
+    hooks:
+      - id: mypy
+        pass_filenames: false
+        args: ["--config-file=pyproject.toml", "."]
+        additional_dependencies:
+          [types-pytz, pandas-stubs, numpy, pytest, polars, quantstats, pydantic]
+
+  - repo: local
+    hooks:
+      - id: check-docs-links
+        name: check docs links
+        entry: python scripts/check_docs_links.py
+        language: python
+        language_version: python3
+        pass_filenames: false
+      - id: check-docs-api-examples
+        name: check docs api examples
+        entry: python scripts/check_docs_api_examples.py
+        language: python
+        language_version: python3
+        pass_filenames: false

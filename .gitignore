@@ -1,2 +1,36 @@
-elastic-start-local
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
 .venv
+.venv_old
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Data & Logs
+*.db
+*.log
+retrieval_logs/
+memory/
+evaluation_results/
+
+# Elastic
+elastic-start-local/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs (optional)
+开发文档.txt

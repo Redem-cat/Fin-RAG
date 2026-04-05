@@ -1,0 +1,10 @@
+{
+  "total_return_pct": 22.44825,
+  "sharpe_ratio": 49116247.924969286,
+  "max_drawdown_pct": 7.55175,
+  "total_commission": 103.5,
+  "net_pnl": -103.5,
+  "end_market_value": 244896.5,
+  "engine_rule_version": "1.0.0",
+  "akquant_version": "0.1.59"
+}
