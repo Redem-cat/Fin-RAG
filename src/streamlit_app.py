@@ -1019,7 +1019,7 @@ def quant_page():
             with col_start:
                 start_date = st.date_input("START", value=datetime(2021, 1, 1), key="rule_start")
             with col_end:
-                end_date = st.date_input("END", value=datetime(2023, 12, 31), key="rule_end")
+                end_date = st.date_input("END", value=datetime(datetime.now().year, 12, 31), key="rule_end")
             
             start_date_str = start_date.strftime("%Y%m%d")
             end_date_str = end_date.strftime("%Y%m%d")
@@ -1157,7 +1157,7 @@ def quant_page():
             with col_ml_start:
                 ml_start_date = st.date_input("开始日期", value=datetime(2021, 1, 1), key="ml_start")
             with col_ml_end:
-                ml_end_date = st.date_input("结束日期", value=datetime(2023, 12, 31), key="ml_end")
+                ml_end_date = st.date_input("结束日期", value=datetime(datetime.now().year, 12, 31), key="ml_end")
             
             ml_initial_cash = st.number_input("初始资金", value=100000.0, min_value=10000.0, key="ml_cash")
             ml_commission = st.number_input("佣金 (%)", value=0.03, min_value=0.0, max_value=1.0, step=0.01, key="ml_comm") / 100
@@ -1334,7 +1334,7 @@ def quant_page():
                 with col_res_start:
                     res_start_date = st.date_input("开始日期", value=datetime(2024, 1, 1), key="res_start")
                 with col_res_end:
-                    res_end_date = st.date_input("结束日期", value=datetime(2024, 6, 30), key="res_end")
+                    res_end_date = st.date_input("结束日期", value=datetime(datetime.now().year, datetime.now().month, min(datetime.now().day, 28)), key="res_end")
             
             with col_res_config:
                 st.markdown("#### 注意事项")
@@ -2444,7 +2444,7 @@ def resset_page():
             st.markdown("#### 查询配置")
             cn_stock_code = st.text_input("股票代码", value="000002", key="resset_cn_code", help="6位数字，如 000002")
             cn_data_type = st.selectbox("数据类型", options=CN_REPORT_TYPES, index=0, key="resset_cn_type")
-            cn_year = st.number_input("报告年份", value=2022, min_value=2001, max_value=2026, key="resset_cn_year")
+            cn_year = st.number_input("报告年份", value=2024, min_value=2001, max_value=datetime.now().year, key="resset_cn_year")
             cn_content = st.radio("内容类型", ["part（剔除表格图片）", "all（全文）"], index=0, key="resset_cn_content")
             cn_content_type = "part" if "part" in cn_content else "all"
 
@@ -2498,7 +2498,7 @@ def resset_page():
             gov_region_options = list(REGION_CODES.keys())
             gov_region_selected = st.selectbox("行政区域", options=gov_region_options, index=0, key="resset_gov_region")
             gov_region_code = REGION_CODES.get(gov_region_selected, "100100")
-            gov_year = st.number_input("报告年份", value=2022, min_value=1954, max_value=2026, key="resset_gov_year")
+            gov_year = st.number_input("报告年份", value=2024, min_value=1954, max_value=datetime.now().year, key="resset_gov_year")
 
             if st.button("查询政府工作报告", type="primary", key="resset_gov_query"):
                 with st.spinner("正在获取数据..."):
@@ -2538,7 +2538,7 @@ def resset_page():
             us_stock_code = st.text_input("美股代码", value="AMZN", key="resset_us_code", help="如 AMZN, AAPL, MSFT")
             us_data_type = st.selectbox("数据类型", options=US_REPORT_TYPES, index=0, key="resset_us_type",
                                         format_func=lambda x: {"10K": "10K - 年报", "10Q": "10Q - 季报", "424B": "424B - 招股说明书"}.get(x, x))
-            us_year = st.number_input("报告年份", value=2022, min_value=1987, max_value=2026, key="resset_us_year")
+            us_year = st.number_input("报告年份", value=2024, min_value=1987, max_value=datetime.now().year, key="resset_us_year")
 
             if st.button("查询美国上市公司数据", type="primary", key="resset_us_query"):
                 with st.spinner("正在获取数据..."):
@@ -2578,7 +2578,7 @@ def resset_page():
         ])
 
         with sub_tab_news:
-            news_year = st.number_input("年份", value=2022, min_value=2017, max_value=2023, key="resset_news_year")
+            news_year = st.number_input("年份", value=2024, min_value=2017, max_value=datetime.now().year, key="resset_news_year")
             if st.button("查询财经资讯", type="primary", key="resset_news_query"):
                 with st.spinner("正在获取数据..."):
                     data = get_financial_news(year=str(news_year))
@@ -2603,7 +2603,7 @@ def resset_page():
 
         with sub_tab_research:
             res_type = st.selectbox("研究类型", options=RESEARCH_TYPES, index=3, key="resset_res_type")
-            res_year = st.number_input("年份", value=2022, min_value=2017, max_value=2023, key="resset_res_year")
+            res_year = st.number_input("年份", value=2024, min_value=2017, max_value=datetime.now().year, key="resset_res_year")
             if st.button("查询研究报告", type="primary", key="resset_res_query"):
                 with st.spinner("正在获取数据..."):
                     data = get_research_report(data_type=res_type, year=str(res_year))
@@ -2628,7 +2628,7 @@ def resset_page():
 
         with sub_tab_forum:
             forum_type = st.selectbox("数据源", options=FORUM_TYPES, index=0, key="resset_forum_type")
-            forum_year = st.number_input("年份", value=2022, min_value=2000, max_value=2023, key="resset_forum_year")
+            forum_year = st.number_input("年份", value=2024, min_value=2000, max_value=datetime.now().year, key="resset_forum_year")
             forum_max = st.slider("最大获取条数", value=10, min_value=1, max_value=50, key="resset_forum_max")
             if st.button("查询股吧评论", type="primary", key="resset_forum_query"):
                 with st.spinner("正在获取数据（两步获取，可能需要较长时间）..."):
@@ -2658,7 +2658,7 @@ def resset_page():
 
         with sub_tab_realestate:
             estate_type = st.selectbox("数据类型", options=REAL_ESTATE_TYPES, index=8, key="resset_estate_type")
-            estate_year = st.number_input("年份", value=2022, min_value=2017, max_value=2023, key="resset_estate_year")
+            estate_year = st.number_input("年份", value=2024, min_value=2017, max_value=datetime.now().year, key="resset_estate_year")
             if st.button("查询房产信息", type="primary", key="resset_estate_query"):
                 with st.spinner("正在获取数据..."):
                     data = get_real_estate_info(data_type=estate_type, year=str(estate_year))
@@ -2728,7 +2728,7 @@ def resset_page():
                                      help="中国上市公司: 6位股票代码; 政府: 区域代码; 美国: 英文代码")
         ingest_subtype = st.text_input("报告子类型", value="年度报告", key="resset_ingest_subtype",
                                         help="如: 年度报告, 10K, 行业分析, 东方财富 等")
-        ingest_year = st.number_input("年份", value=2023, min_value=2000, max_value=2026, key="resset_ingest_year")
+        ingest_year = st.number_input("年份", value=2024, min_value=2000, max_value=datetime.now().year, key="resset_ingest_year")
 
         if st.button("填充到 RAG 知识库", type="primary", key="resset_ingest_btn"):
             with st.spinner("正在获取数据并注入 RAG 知识库..."):
