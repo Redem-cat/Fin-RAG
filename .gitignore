@@ -1,3 +1,24 @@
+# ===========================================
+# 敏感信息
+# ===========================================
+# API Keys and Secrets
+.env
+*.env
+.env.*
+api_key*
+*api_key*
+secret*
+*secret*
+token*
+*token*
+password*
+*password*
+credential*
+*credential*
+
+# CodeBuddy 工作区（包含敏感配置和计划文件）
+.codebuddy/
+
 # Python
 __pycache__/
 *.py[cod]

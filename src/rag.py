@@ -18,6 +18,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.documents import Document
 from langgraph.graph import START, StateGraph
 from typing_extensions import List, TypedDict
+from typing import Dict, Any
 
 # 尝试导入 reranker（可选依赖）
 try:
@@ -55,6 +56,18 @@ except ImportError as e:
 except Exception as e:
     KG_SYSTEM_AVAILABLE = False
     print(f"警告: 知识图谱初始化失败: {e}")
+
+# 尝试导入引用追踪模块
+try:
+    from src.citation import (
+        CitationSource,
+        SourceType,
+        get_citation_tracker
+    )
+    CITATION_SYSTEM_AVAILABLE = True
+except ImportError as e:
+    CITATION_SYSTEM_AVAILABLE = False
+    print(f"警告: 引用追踪模块导入失败: {e}")
 
 
 # =========================
@@ -604,6 +617,50 @@ Instructions:
 5. Write only three sentences."""
 )
 
+# =========================
+# 🔹 锐思文本分析工具提示（LLM 自主决策调用）
+# =========================
+RESSET_TOOL_DESCRIPTION = """
+【可用工具 - 锐思文本分析 API】
+你拥有调用锐思(RESSET)文本分析API的能力。当你认为需要获取以下类型的文本数据来回答用户问题时，请在回答末尾添加调用标记。
+
+支持的数据类型和调用格式:
+1. 中国上市公司财经文本: [RESSET_CALL:cn_report:股票代码:报告类型:年份]
+   - 报告类型: 年度报告, 第一季度报告, 第二季度报告, 第三季度报告, 问询函及回复说明, IPO招股说明书, 内部控制评价报告, 社会责任报告, 审计报告, 业绩说明会全文
+   - 示例: [RESSET_CALL:cn_report:000002:年度报告:2023] 获取万科A的2023年年度报告
+
+2. 政府工作报告: [RESSET_CALL:gov_report:区域代码::年份]
+   - 区域代码: 100100(国务院), 100101(北京), 100109(上海), 100111(浙江), 100119(广东)等
+   - 示例: [RESSET_CALL:gov_report:100100::2023] 获取国务院2023年政府工作报告
+
+3. 美国上市公司报告: [RESSET_CALL:us_report:股票代码:报告类型:年份]
+   - 报告类型: 10K, 10Q, 424B
+   - 示例: [RESSET_CALL:us_report:AMZN:10K:2023] 获取亚马逊2023年10-K报告
+
+4. 财经新闻资讯: [RESSET_CALL:financial_news:::年份]
+   - 示例: [RESSET_CALL:financial_news:::2023] 获取2023年财经新闻
+
+5. 研究报告: [RESSET_CALL:research:报告类型::年份]
+   - 报告类型: 宏观分析, 行业分析, 证券市场研究, 公司研究, 期货研究, 晨会汇编
+   - 示例: [RESSET_CALL:research:行业分析::2023] 获取2023年行业分析研究报告
+
+6. 股吧评论: [RESSET_CALL:forum:论坛类型::年份]
+   - 论坛类型: 东方财富, 雪球
+   - 示例: [RESSET_CALL:forum:东方财富::2023] 获取2023年东方财富股吧评论
+
+7. 房产拍卖信息: [RESSET_CALL:real_estate:拍卖类型::年份]
+   - 拍卖类型: 京东拍卖_拍卖公告, 京东拍卖_竞买须知, 人民法院诉讼资产网_拍卖公告等
+   - 示例: [RESSET_CALL:real_estate:京东拍卖_拍卖公告::2023] 获取2023年京东拍卖公告
+
+调用规则:
+- 只有当用户问题确实需要上述文本数据时才调用，不要在闲聊或无关问题时调用
+- 每次最多调用一个类型
+- 调用标记放在回答内容的最后，格式严格为 [RESSET_CALL:类型:参数1:参数2:年份]
+- 调用后系统会自动获取数据并补充到你的回答中
+"""
+
+RESSET_CALL_PATTERN = r'\[RESSET_CALL:([a-z_]+):([^:]*):([^:]*):(\d{4})\]'
+
 # 定义状态
 class State(TypedDict):
     question: str
@@ -692,6 +749,19 @@ def generate(state: State):
     except Exception as e:
         print(f"金融数据模块加载失败: {e}")
 
+    # =========================
+    # 🔹 锐思文本数据自动补充（LLM 自主决策 + 关键词触发）
+    # =========================
+    resset_context = ""
+    try:
+        from src.resset_data import should_trigger_resset, get_resset_context
+        if should_trigger_resset(question):
+            resset_context = get_resset_context(question)
+            if resset_context:
+                print(f"[锐思数据] 检测到文本分析相关问题，补充数据")
+    except Exception as e:
+        print(f"锐思数据模块加载失败: {e}")
+
     # 处理带分数的文档（(doc, score) 元组列表），过滤低相似度
     context_docs = []
     all_scores = []
@@ -754,14 +824,32 @@ def generate(state: State):
 
     history = state.get("history", "") or "No previous conversation."
 
-    # 合并上下文：文档检索 + 金融数据
+    # =========================
+    # 🔹 ML 策略上下文自动补充
+    # =========================
+    ml_context = ""
+    try:
+        ml_keywords = ["机器学习", "训练模型", "滚动训练", "walk_forward", "walkforward",
+                       "xgboost", "lightgbm", "randomforest", "lstm", "深度学习",
+                       "热启动", "快照恢复", "checkpoint", "warm_start", "warmstart", "快照",
+                       "多策略", "模拟盘", "组合策略", "slot",
+                       "特征工程", "pipeline", "交叉验证", "过拟合",
+                       "量化", "回测", "策略"]
+        if any(kw in question for kw in ml_keywords):
+            ml_context = get_ml_strategy_context(question)
+            if ml_context:
+                print(f"[ML策略] 检测到量化/ML相关问题，补充上下文")
+    except Exception as e:
+        print(f"ML策略上下文获取失败: {e}")
+
+    # 合并上下文：文档检索 + ML 上下文 + 锐思文本 + 金融数据
+    combined_context = docs_content
+    if ml_context:
+        combined_context = (combined_context + "\n\n" + ml_context) if combined_context else ml_context
+    if resset_context:
+        combined_context = (combined_context + "\n\n" + resset_context) if combined_context else resset_context
     if finance_context:
-        if docs_content:
-            combined_context = docs_content + "\n\n" + finance_context
-        else:
-            combined_context = finance_context
-    else:
-        combined_context = docs_content
+        combined_context = (combined_context + "\n\n" + finance_context) if combined_context else finance_context
 
     # 根据是否使用上下文调整提示词
     if use_retrieved_context and docs_content:
@@ -817,9 +905,78 @@ Instructions:
             history=history
         )
 
+    # 🔹 注入锐思工具描述到 prompt 末尾
+    try:
+        from src.resset_data import check_resset_available
+        available, _ = check_resset_available()
+        if available:
+            prompt = prompt + "\n\n" + RESSET_TOOL_DESCRIPTION
+    except Exception:
+        pass  # RESSET 不可用则不注入
+
     # 延迟加载 LLM
     llm_model = _get_llm()
     response = llm_model.invoke(prompt)
+
+    # 🔹 后处理：检测 LLM 输出中的 RESSET 调用标记并执行
+    answer_text = response.content
+    resset_enrichment = ""
+
+    import re as _re
+    resset_matches = _re.findall(RESSET_CALL_PATTERN, answer_text)
+    if resset_matches:
+        for match in resset_matches:
+            call_type, param1, param2, year = match
+            try:
+                from src.resset_data import (
+                    get_cn_company_report, get_government_report,
+                    get_us_company_report, get_financial_news,
+                    get_research_report, get_forum_posts,
+                    get_real_estate_info, format_resset_content,
+                )
+
+                data = []
+                data_type_label = ""
+
+                if call_type == "cn_report":
+                    data = get_cn_company_report(param1, param2 or "年度报告", year)
+                    data_type_label = f"中国上市公司{param2 or '年度报告'} ({param1})"
+                elif call_type == "gov_report":
+                    data = get_government_report(param1 or "100100", year)
+                    data_type_label = f"政府工作报告 ({param1 or '国务院'})"
+                elif call_type == "us_report":
+                    data = get_us_company_report(param1, param2 or "10K", year)
+                    data_type_label = f"美国上市公司{param2 or '10K'} ({param1})"
+                elif call_type == "financial_news":
+                    data = get_financial_news(year)
+                    data_type_label = f"财经新闻资讯 ({year})"
+                elif call_type == "research":
+                    data = get_research_report(param1 or "公司研究", year)
+                    data_type_label = f"研究报告-{param1 or '公司研究'} ({year})"
+                elif call_type == "forum":
+                    data = get_forum_posts(param1 or "东方财富", year)
+                    data_type_label = f"股吧评论-{param1 or '东方财富'} ({year})"
+                elif call_type == "real_estate":
+                    data = get_real_estate_info(param1 or "京东拍卖_拍卖公告", year)
+                    data_type_label = f"房产拍卖-{param1 or '京东拍卖_拍卖公告'} ({year})"
+
+                if data:
+                    formatted = format_resset_content(data, data_type_label)
+                    resset_enrichment += f"\n\n---\n**[锐思数据补充 - {data_type_label}]**\n\n{formatted}"
+                    print(f"[锐思数据] LLM 调用成功: {data_type_label}, 获取 {len(data)} 条数据")
+                else:
+                    resset_enrichment += f"\n\n*[锐思数据: 未找到 {data_type_label} 的相关数据]*"
+
+            except Exception as e:
+                resset_enrichment += f"\n\n*[锐思数据调用失败: {e}]*"
+                print(f"[锐思数据] LLM 调用失败: {e}")
+
+        # 移除调用标记，附加获取到的数据
+        answer_text = _re.sub(RESSET_CALL_PATTERN, '', answer_text).strip()
+        answer_text += resset_enrichment
+
+    # 更新 response 的内容
+    response.content = answer_text
 
     # 记录到检索日志（延迟加载）
     logger = RetrievalLogger(max_log_files=10)
@@ -869,6 +1026,8 @@ def ask_question(question: str, top_k: int = 3, user_name: str = None) -> dict:
     trigger_results = []
     kg_context = ""
     kg_sources = []
+    resset_context_for_answer = ""
+    ml_context_for_answer = ""
     if TRIGGER_SYSTEM_AVAILABLE:
         try:
             trigger_manager = get_trigger_manager()
@@ -895,6 +1054,25 @@ def ask_question(question: str, top_k: int = 3, user_name: str = None) -> dict:
                                 print(f"[KG] 检索到 {len(kg_result.entities)} 个实体")
                         except Exception as e:
                             print(f"[KG] 检索失败: {e}")
+
+                    # 如果触发了锐思文本分析，获取文本数据
+                    if result.trigger_type == "resset":
+                        try:
+                            from src.resset_data import get_resset_context
+                            resset_context_for_answer = get_resset_context(question)
+                            if resset_context_for_answer:
+                                print(f"[锐思] 获取到文本分析数据")
+                        except Exception as e:
+                            print(f"[锐思] 数据获取失败: {e}")
+
+                    # 如果触发了量化策略，获取 ML/快照/多策略上下文
+                    if result.trigger_type == "quant":
+                        try:
+                            ml_context_for_answer = get_ml_strategy_context(question)
+                            if ml_context_for_answer:
+                                print(f"[量化] 获取到 ML 策略上下文数据")
+                        except Exception as e:
+                            print(f"[量化] ML 策略上下文获取失败: {e}")
         except Exception as e:
             print(f"[触发系统] 分析失败: {e}")
     
@@ -1065,6 +1243,47 @@ def ask_question(question: str, top_k: int = 3, user_name: str = None) -> dict:
     if user_name:
         final_answer = f"{user_name}，{answer_with_compliance}"
 
+    # =========================
+    # 🔹 引用追踪
+    # =========================
+    citation_summary = ""
+    if CITATION_SYSTEM_AVAILABLE:
+        try:
+            citation_sources = []
+            
+            # 向量检索来源
+            for src in sources:
+                citation_sources.append(CitationSource(
+                    source_type=SourceType.VECTOR_SEARCH,
+                    source_name=src.get("source", "未知"),
+                    title=Path(src.get("source", "")).stem if src.get("source") else "文档片段",
+                    content=src.get("content", ""),
+                    confidence=src.get("similarity", 0.0),
+                    metadata={"page": src.get("page", "")}
+                ))
+            
+            # 知识图谱来源
+            if kg_sources:
+                for kg_src in kg_sources:
+                    citation_sources.append(CitationSource(
+                        source_type=SourceType.KNOWLEDGE_GRAPH,
+                        source_name="Neo4j 知识图谱",
+                        title=kg_src.get("type", "实体"),
+                        content=kg_context[:200] if kg_context else "",
+                        confidence=kg_src.get("confidence", 0.8)
+                    ))
+            
+            # 记录引用
+            tracker = get_citation_tracker()
+            tracker.record(question, final_answer, citation_sources)
+            
+            # 生成摘要
+            if citation_sources:
+                citation_summary = tracker.format_summary(citation_sources)
+            
+        except Exception as e:
+            print(f"[引用追踪] 错误: {e}")
+
     return {
         "question": question,
         "answer": final_answer,
@@ -1076,7 +1295,12 @@ def ask_question(question: str, top_k: int = 3, user_name: str = None) -> dict:
         "triggers": [r.to_dict() if hasattr(r, 'to_dict') else r for r in trigger_results],
         "kg_context": kg_context,
         "kg_sources": kg_sources,
-        "has_kg_results": bool(kg_context)
+        "has_kg_results": bool(kg_context),
+        "resset_context": resset_context_for_answer,
+        "has_resset_results": bool(resset_context_for_answer),
+        "ml_context": ml_context_for_answer,
+        "has_ml_results": bool(ml_context_for_answer),
+        "citation_summary": citation_summary
     }
 
 
@@ -1305,6 +1529,124 @@ def clear_conversation_history():
     memory.clear_history()
 
 
+def get_ml_strategy_context(question: str) -> str:
+    """
+    根据 ML/热启动/多策略相关问题生成上下文
+
+    Args:
+        question: 用户问题
+
+    Returns:
+        上下文字符串
+    """
+    question_lower = question.lower()
+    context_parts = []
+
+    # 检测是否是 ML 相关问题
+    ml_keywords = ["机器学习", "训练模型", "滚动训练", "walk_forward", "walkforward",
+                   "xgboost", "lightgbm", "randomforest", "lstm", "深度学习",
+                   "特征工程", "pipeline", "交叉验证", "过拟合"]
+    snapshot_keywords = ["热启动", "快照恢复", "checkpoint", "warm_start", "warmstart", "快照"]
+    multi_keywords = ["多策略", "模拟盘", "组合策略", "slot"]
+
+    if any(kw in question_lower for kw in ml_keywords):
+        try:
+            from src.ml_strategy import get_available_ml_strategies, ML_STRATEGY_TEMPLATES
+            strategies = get_available_ml_strategies()
+            strategy_list = "\n".join([f"- {s['name']}: {s['description']}" for s in strategies])
+            context_parts.append(f"""【ML 策略系统信息】
+系统支持以下 ML 策略模板:
+{strategy_list}
+
+Walk-forward Validation 参数:
+- train_window: 训练窗口（默认50）
+- test_window: 测试窗口（默认20）
+- rolling_step: 滚动步长（默认10）
+
+特征集: basic（收益率）, technical（+RSI/MACD/布林带）, extended（全部特征）
+""")
+        except ImportError:
+            context_parts.append("【ML 策略模块未安装】")
+
+    if any(kw in question_lower for kw in snapshot_keywords):
+        try:
+            from src.snapshot_manager import list_snapshots
+            snapshots = list_snapshots()
+            if snapshots:
+                snap_list = "\n".join([
+                    f"- {s.get('name', 'unknown')}: {s.get('strategy_type', 'N/A')}, "
+                    f"收益率 {s.get('total_return_pct', 0):.2f}%, "
+                    f"创建于 {s.get('created_at', 'N/A')[:10]}"
+                    for s in snapshots[:5]
+                ])
+                context_parts.append(f"""【热启动快照信息】
+可用快照:
+{snap_list}
+
+热启动流程:
+1. Phase 1: 正常回测 → save_snapshot() 保存状态
+2. Phase 2: run_warm_start() 从快照恢复继续运行
+3. 策略需在 on_start() 中通过 self.is_restored 避免覆盖已恢复状态
+""")
+            else:
+                context_parts.append("【热启动】暂无已保存的快照。运行回测时可指定快照名称保存。")
+        except ImportError:
+            context_parts.append("【快照管理模块未安装】")
+
+    if any(kw in question_lower for kw in multi_keywords):
+        context_parts.append("""【多策略模拟盘信息】
+系统支持多 slot 策略配置:
+- 每个 slot 独立策略，共享同一引擎的 Portfolio
+- 支持跨策略风控：限额、日损、仅平仓激活态
+- 可计算跨策略指标：收益相关性、组合夏普比率
+
+配置方式: MultiStrategySimulator.add_slot() 添加策略槽位
+""")
+
+    return "\n\n".join(context_parts)
+
+
+def get_resset_explanation(question: str) -> str:
+    """
+    根据锐思文本分析相关问题生成上下文说明
+
+    Args:
+        question: 用户问题
+
+    Returns:
+        上下文字符串
+    """
+    question_lower = question.lower()
+    context_parts = []
+
+    # 锐思 API 能力说明
+    resset_capabilities = """【锐思文本分析平台】
+系统已接入锐思文本分析 API，支持以下数据获取:
+
+1. 中国上市公司财经文本:
+   - 年度报告、季度报告、问询函及回复、IPO招股说明书
+   - 内部控制评价报告、社会责任报告、审计报告等
+   - 需要提供股票代码（6位数字）和年份
+
+2. 政府工作报告:
+   - 国务院及各省市政府工作报告（1954年至今）
+   - 需要提供行政区域代码和年份
+
+3. 美国上市公司报告:
+   - 10K年报、10Q季报、424B招股说明书
+   - 需要提供美股代码（如 AMZN）和年份
+
+4. 财经资讯 / 研究报告 / 股吧评论 / 房产拍卖信息
+
+使用方式: 在 CHAT 页面直接输入包含"年报"、"政府工作报告"、"研究报告"等关键词的问题，
+系统会自动触发锐思数据获取并融入回答。"""
+
+    if any(kw in question_lower for kw in ["锐思", "resset"]):
+        context_parts.append(resset_capabilities)
+
+    return "\n\n".join(context_parts)
+
+
 def create_rag_chain():
     """创建并返回 RAG 链，供评估器使用
 
@@ -1312,6 +1654,148 @@ def create_rag_chain():
         compiled graph: 编译好的 LangGraph
     """
     return graph
+
+
+# =========================
+# 🔹 锐思数据填充 RAG 知识库
+# =========================
+def ingest_resset_data_to_rag(
+    data_type: str = "cn_report",
+    stock_code: str = "000002",
+    report_type: str = "年度报告",
+    year: str = "2023",
+    region_code: str = "100100",
+    max_items: int = 10,
+) -> Dict[str, Any]:
+    """
+    从锐思 API 获取文本数据并注入到 RAG 向量数据库
+
+    支持的数据类型:
+    - cn_report: 中国上市公司财经文本（需提供 stock_code, report_type, year）
+    - gov_report: 政府工作报告（需提供 region_code, year）
+    - us_report: 美国上市公司报告（需提供 stock_code, report_type, year）
+    - financial_news: 财经新闻资讯（需提供 year）
+    - research: 研究报告（需提供 report_type, year）
+    - forum: 股吧评论（需提供 report_type=论坛名, year）
+    - real_estate: 房产拍卖（需提供 report_type=拍卖类型, year）
+
+    Args:
+        data_type: 数据类型
+        stock_code: 股票代码
+        report_type: 报告/数据子类型
+        year: 年份
+        region_code: 行政区域代码
+        max_items: 最大获取条数
+
+    Returns:
+        注入结果字典
+    """
+    try:
+        from src.resset_data import (
+            get_cn_company_report, get_government_report,
+            get_us_company_report, get_financial_news,
+            get_research_report, get_forum_posts,
+            get_real_estate_info, check_resset_available,
+        )
+    except ImportError:
+        return {"success": False, "error": "锐思模块未安装"}
+
+    # 检查 API 可用性
+    available, msg = check_resset_available()
+    if not available:
+        return {"success": False, "error": f"锐思 API 不可用: {msg}"}
+
+    # 获取数据
+    data = []
+    label = ""
+
+    if data_type == "cn_report":
+        data = get_cn_company_report(stock_code, report_type, year)
+        label = f"中国上市公司{report_type}_{stock_code}_{year}"
+    elif data_type == "gov_report":
+        data = get_government_report(region_code, year)
+        label = f"政府工作报告_{region_code}_{year}"
+    elif data_type == "us_report":
+        data = get_us_company_report(stock_code, report_type, year)
+        label = f"美国上市公司{report_type}_{stock_code}_{year}"
+    elif data_type == "financial_news":
+        data = get_financial_news(year)
+        label = f"财经新闻资讯_{year}"
+    elif data_type == "research":
+        data = get_research_report(report_type, year)
+        label = f"研究报告_{report_type}_{year}"
+    elif data_type == "forum":
+        data = get_forum_posts(report_type, year, max_items=max_items)
+        label = f"股吧评论_{report_type}_{year}"
+    elif data_type == "real_estate":
+        data = get_real_estate_info(report_type, year)
+        label = f"房产拍卖_{report_type}_{year}"
+    else:
+        return {"success": False, "error": f"未知数据类型: {data_type}"}
+
+    if not data:
+        return {"success": False, "error": f"未获取到数据 ({label})"}
+
+    # 注入到向量数据库
+    vdb = _get_vector_db()
+    documents = []
+
+    for i, item in enumerate(data[:max_items]):
+        # 提取内容
+        content = (
+            item.get("part_content") or item.get("all_content") or
+            item.get("Content") or item.get("content") or item.get("announcement") or ""
+        )
+        if isinstance(content, list):
+            content = content[0] if content else ""
+        if not content or len(content.strip()) < 50:
+            continue
+
+        # 截断过长内容
+        if len(content) > 8000:
+            content = content[:8000] + "...(内容已截断)"
+
+        # 提取元数据
+        title = item.get("title", "")
+        if isinstance(title, list):
+            title = title[0] if title else ""
+        name = item.get("name", "")
+        if isinstance(name, list):
+            name = name[0] if name else ""
+        code = item.get("code", "")
+        if isinstance(code, list):
+            code = code[0] if code else ""
+
+        doc = Document(
+            page_content=content,
+            metadata={
+                "source": f"resset_{data_type}",
+                "title": title,
+                "name": name,
+                "code": code,
+                "year": year,
+                "data_type": data_type,
+                "report_type": report_type,
+                "ingested_at": datetime.now().isoformat(),
+            }
+        )
+        documents.append(doc)
+
+    if not documents:
+        return {"success": False, "error": "获取的数据内容为空或过短"}
+
+    # 批量添加到向量数据库
+    try:
+        ids = vdb.add_documents(documents)
+        print(f"[锐思数据] 成功注入 {len(ids)} 条文档到 RAG 知识库 ({label})")
+        return {
+            "success": True,
+            "label": label,
+            "documents_ingested": len(ids),
+            "total_data_fetched": len(data),
+        }
+    except Exception as e:
+        return {"success": False, "error": f"注入向量数据库失败: {e}"}
 
 # =========================
 # 🔹 主函数（命令行测试）

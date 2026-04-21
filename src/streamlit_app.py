@@ -22,6 +22,8 @@ try:
     from src.quantitative import (
         check_akquant_available,
         get_available_strategies,
+        get_available_rule_strategies,
+        get_available_ml_strategies,
         run_backtest,
         generate_report,
         parse_natural_language_strategy,
@@ -32,6 +34,68 @@ try:
 except ImportError as e:
     QUANT_AVAILABLE = False
     print(f"量化模块导入失败: {e}")
+
+# 尝试导入 ML 策略模块
+try:
+    from src.ml_strategy import (
+        get_available_ml_strategies as get_ml_strategies,
+        create_ml_strategy_instance,
+        ML_STRATEGY_TEMPLATES,
+        DEFAULT_FEATURE_CONFIGS,
+        should_trigger_ml,
+    )
+    ML_AVAILABLE = True
+except ImportError as e:
+    ML_AVAILABLE = False
+    print(f"ML 策略模块导入失败: {e}")
+
+# 尝试导入快照管理模块
+try:
+    from src.snapshot_manager import (
+        get_snapshot_manager,
+        list_snapshots,
+        delete_snapshot,
+    )
+    SNAPSHOT_AVAILABLE = True
+except ImportError as e:
+    SNAPSHOT_AVAILABLE = False
+    print(f"快照管理模块导入失败: {e}")
+
+# 尝试导入多策略模块
+try:
+    from src.multi_strategy import (
+        get_multi_strategy_simulator,
+        list_saved_configs,
+    )
+    MULTI_STRATEGY_AVAILABLE = True
+except ImportError as e:
+    MULTI_STRATEGY_AVAILABLE = False
+    print(f"多策略模块导入失败: {e}")
+
+# 尝试导入锐思文本分析模块
+try:
+    from src.resset_data import (
+        check_resset_available,
+        get_resset_connection,
+        get_cn_company_report,
+        get_government_report,
+        get_us_company_report,
+        get_financial_news,
+        get_research_report,
+        get_forum_posts,
+        get_real_estate_info,
+        format_resset_content,
+        CN_REPORT_TYPES,
+        US_REPORT_TYPES,
+        RESEARCH_TYPES,
+        FORUM_TYPES,
+        REAL_ESTATE_TYPES,
+        REGION_CODES,
+    )
+    RESSET_AVAILABLE = True
+except ImportError as e:
+    RESSET_AVAILABLE = False
+    print(f"锐思数据模块导入失败: {e}")
 
 st.set_page_config(page_title="FinRAG-Advisor", layout="wide", page_icon="")
 
@@ -364,7 +428,7 @@ div[data-testid="stSlider"] [role="slider"] {
 """, unsafe_allow_html=True)
 
 
-def display_chat_message(role, content, sources=None, msg_index=None, used_context=None, compliance=None, kg_sources=None):
+def display_chat_message(role, content, sources=None, msg_index=None, used_context=None, compliance=None, kg_sources=None, citation_summary=None):
     if role == "user":
         st.markdown(f"""
         <div class="user-message">
@@ -402,6 +466,14 @@ def display_chat_message(role, content, sources=None, msg_index=None, used_conte
         </div>
         """, unsafe_allow_html=True)
         st.markdown(content)
+        
+        # 显示引用摘要
+        if citation_summary:
+            st.markdown(f"""
+            <div style="margin-top:0.5rem;padding:0.5rem;background:#f8fafc;border-left:3px solid #3b82f6;border-radius:0.25rem;font-size:0.85rem;">
+                {citation_summary}
+            </div>
+            """, unsafe_allow_html=True)
 
     # 显示 KG 检索结果
     if kg_sources:
@@ -461,7 +533,7 @@ def render_auth_sidebar():
         with st.form("login"):
             username = st.text_input("USERNAME", "")
             password = st.text_input("PASSWORD", "", type="password")
-            submit = st.form_submit_button("LOGIN", type="primary", use_container_width=True)
+            submit = st.form_submit_button("LOGIN", type="primary", width='stretch')
             
             if submit:
                 if username and password:
@@ -477,7 +549,7 @@ def render_auth_sidebar():
             username = st.text_input("USERNAME", "")
             password = st.text_input("PASSWORD", "", type="password")
             confirm = st.text_input("CONFIRM", "", type="password")
-            submit = st.form_submit_button("REGISTER", type="primary", use_container_width=True)
+            submit = st.form_submit_button("REGISTER", type="primary", width='stretch')
             
             if submit:
                 if not username or not password:
@@ -511,7 +583,7 @@ def chat_page():
             </div>
             """, unsafe_allow_html=True)
             
-            if st.button("LOGOUT", use_container_width=True):
+            if st.button("LOGOUT", width='stretch'):
                 st.session_state.logged_in = False
                 st.session_state.user_info = None
                 st.session_state.chat_history = []
@@ -535,7 +607,7 @@ def chat_page():
 
         # 对话管理
         if st.session_state.logged_in:
-            if st.button("NEW CHAT", type="primary", use_container_width=True):
+            if st.button("NEW CHAT", type="primary", width='stretch'):
                 conv_id = auth.create_conversation(st.session_state.user_info['id'], "NEW")
                 if conv_id:
                     st.session_state.current_conversation_id = conv_id
@@ -555,7 +627,7 @@ def chat_page():
                     
                     col_btn, col_del = st.columns([5, 1])
                     with col_btn:
-                        if st.button(f"{title}", key=f"conv_{conv['id']}", use_container_width=True):
+                        if st.button(f"{title}", key=f"conv_{conv['id']}", width='stretch'):
                             messages = auth.get_conversation_messages(conv['id'])
                             st.session_state.current_conversation_id = conv['id']
                             st.session_state.chat_history = []
@@ -566,14 +638,14 @@ def chat_page():
                                     st.session_state.chat_history.append(("assistant", msg['content'], msg['sources'], msg['used_context']))
                             st.rerun()
                     with col_del:
-                        if st.button("×", key=f"del_{conv['id']}", use_container_width=True):
+                        if st.button("×", key=f"del_{conv['id']}", width='stretch'):
                             if auth.delete_conversation(conv['id'], st.session_state.user_info['id']):
                                 if st.session_state.current_conversation_id == conv['id']:
                                     st.session_state.current_conversation_id = None
                                     st.session_state.chat_history = []
                                 st.rerun()
 
-        if st.button("CLEAR", use_container_width=True):
+        if st.button("CLEAR", width='stretch'):
             st.session_state.chat_history = []
             st.session_state.current_conversation_id = None
             clear_conversation_history()
@@ -604,7 +676,7 @@ def chat_page():
         elif len(msg) == 5:
             display_chat_message(msg[0], msg[1], msg[2], msg_index=idx, used_context=msg[3], compliance=msg[4])
         elif len(msg) >= 6:
-            display_chat_message(msg[0], msg[1], msg[2], msg_index=idx, used_context=msg[3], compliance=msg[4], kg_sources=msg[5] if msg[5] else None)
+            display_chat_message(msg[0], msg[1], msg[2], msg_index=idx, used_context=msg[3], compliance=msg[4], kg_sources=msg[5] if msg[5] else None, citation_summary=msg[6] if len(msg) >= 7 else None)
         else:
             display_chat_message(msg[0], msg[1], msg[2], msg_index=idx, used_context=msg[3])
 
@@ -643,7 +715,7 @@ def chat_page():
                 with st.spinner("..."):
                     result = ask_question(user_input, top_k=st.session_state.search_top_k, user_name=user_name)
 
-                    st.session_state.chat_history.append(("assistant", result['answer'], result['source'], result['used_context'], result.get('compliance'), result.get('kg_sources', [])))
+                    st.session_state.chat_history.append(("assistant", result['answer'], result['source'], result['used_context'], result.get('compliance'), result.get('kg_sources', []), result.get('citation_summary')))
                     
                     if st.session_state.logged_in:
                         if not st.session_state.current_conversation_id:
@@ -692,7 +764,7 @@ def evaluation_page():
         reverse_labels = {v: k for k, v in metric_labels.items()}
         selected_metrics_keys = [reverse_labels[m] for m in selected_metrics]
 
-        if st.button("RUN", type="primary", use_container_width=True):
+        if st.button("RUN", type="primary", width='stretch'):
             st.session_state.eval_triggered = True
 
     # 主内容
@@ -800,7 +872,7 @@ def evaluation_page():
             )
             fig_summary.update_xaxes(showline=True, linewidth=2, linecolor='#000000')
             fig_summary.update_yaxes(showline=True, linewidth=2, linecolor='#000000')
-            st.plotly_chart(fig_summary, use_container_width=True)
+            st.plotly_chart(fig_summary, width='stretch')
 
         with col_chart2:
             st.caption("DISTRIBUTION")
@@ -826,7 +898,7 @@ def evaluation_page():
                     )
                     fig_box.update_xaxes(showline=True, linewidth=2, linecolor='#000000')
                     fig_box.update_yaxes(showline=True, linewidth=2, linecolor='#000000')
-                    st.plotly_chart(fig_box, use_container_width=True)
+                    st.plotly_chart(fig_box, width='stretch')
 
         st.divider()
 
@@ -834,7 +906,7 @@ def evaluation_page():
         if st.session_state.eval_df is not None:
             display_cols = [col for col in st.session_state.eval_df.columns
                            if col not in ['retrieved_contexts', 'reference']]
-            st.dataframe(st.session_state.eval_df[display_cols], use_container_width=True, height=400)
+            st.dataframe(st.session_state.eval_df[display_cols], width='stretch', height=400)
 
         st.divider()
 
@@ -847,7 +919,7 @@ def evaluation_page():
                 data=json_str,
                 file_name=f"eval_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.json",
                 mime="application/json",
-                use_container_width=True
+                width='stretch'
             )
 
         with col_dl2:
@@ -857,12 +929,12 @@ def evaluation_page():
                 data=html_content,
                 file_name=f"eval_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.html",
                 mime="text/html",
-                use_container_width=True
+                width='stretch'
             )
 
 
 def quant_page():
-    """量化策略回测页面"""
+    """量化策略回测页面（含规则策略、ML策略、快照管理、多策略模拟）"""
     st.markdown('<h1 class="main-header">QUANT</h1>', unsafe_allow_html=True)
     init_session_state()
     
@@ -872,176 +944,629 @@ def quant_page():
         st.code("pip install -e ./akquant-main/python", language="bash")
         return
     
-    with st.sidebar:
-        st.markdown("### QUANT SETTINGS")
-        
-        # 检查 AKQuant 状态
-        available, msg = check_akquant_available()
-        if available:
-            st.success(f"✓ {msg}")
-        else:
-            st.warning(f"⚠ {msg}")
-        
-        # 初始资金
-        initial_cash = st.number_input("INITIAL CASH", value=100000.0, min_value=10000.0, step=10000.0)
-        
-        # 佣金
-        commission = st.number_input("COMMISSION (%)", value=0.03, min_value=0.0, max_value=1.0, step=0.01) / 100
-        
-        st.divider()
-        
-        # 策略选择
-        st.markdown("### STRATEGY")
-        strategies = get_available_strategies()
-        strategy_names = [s["name"] for s in strategies]
-        selected_strategy_name = st.selectbox("SELECT STRATEGY", options=strategy_names, index=0)
-        selected_strategy_id = strategies[strategy_names.index(selected_strategy_name)]["id"]
-        
-        # 策略描述
-        st.caption(strategies[strategy_names.index(selected_strategy_name)]["description"])
-        
-        # 策略参数
-        st.markdown("### PARAMETERS")
-        strategy_params = {}
-        
-        if selected_strategy_id == "dual_ma":
-            fast_window = st.slider("FAST WINDOW", 5, 30, 10)
-            slow_window = st.slider("SLOW WINDOW", 10, 60, 30)
-            strategy_params = {"fast_window": fast_window, "slow_window": slow_window}
-            
-        elif selected_strategy_id == "rsi":
-            rsi_period = st.slider("RSI PERIOD", 5, 20, 14)
-            oversold = st.slider("OVERSOLD", 10, 40, 30)
-            overbought = st.slider("OVERBOUGHT", 60, 90, 70)
-            strategy_params = {"rsi_period": rsi_period, "oversold": oversold, "overbought": overbought}
-            
-        elif selected_strategy_id == "macd":
-            fast_period = st.slider("FAST PERIOD", 5, 20, 12)
-            slow_period = st.slider("SLOW PERIOD", 15, 40, 26)
-            signal_period = st.slider("SIGNAL PERIOD", 5, 15, 9)
-            strategy_params = {"fast_period": fast_period, "slow_period": slow_period, "signal_period": signal_period}
-            
-        elif selected_strategy_id == "bollinger":
-            window = st.slider("WINDOW", 10, 30, 20)
-            num_std = st.slider("STD MULTIPLIER", 1.0, 3.0, 2.0, 0.25)
-            strategy_params = {"window": window, "num_std": num_std}
-        
-        st.divider()
-        
-        # 回测按钮
-        run_backtest_clicked = st.button("RUN BACKTEST", type="primary", use_container_width=True)
+    # 子 Tab 布局
+    tab_rule, tab_ml, tab_snapshot, tab_multi = st.tabs([
+        "规则策略", "ML 策略训练", "快照管理", "多策略模拟盘"
+    ])
     
-    # 主内容
-    col_left, col_right = st.columns([1, 1])
-    
-    with col_left:
-        st.markdown("### DATA SOURCE")
+    # ===========================
+    # Tab 1: 规则策略（原有功能）
+    # ===========================
+    with tab_rule:
+        with st.sidebar:
+            st.markdown("### QUANT SETTINGS")
+            
+            available, msg = check_akquant_available()
+            if available:
+                st.success(f"✓ {msg}")
+            else:
+                st.warning(f"⚠ {msg}")
+            
+            initial_cash = st.number_input("INITIAL CASH", value=100000.0, min_value=10000.0, step=10000.0, key="rule_cash")
+            commission = st.number_input("COMMISSION (%)", value=0.03, min_value=0.0, max_value=1.0, step=0.01, key="rule_comm") / 100
+            
+            st.divider()
+            
+            st.markdown("### STRATEGY")
+            rule_strategies = get_available_rule_strategies() if QUANT_AVAILABLE else []
+            strategy_names = [s["name"] for s in rule_strategies]
+            
+            if strategy_names:
+                selected_strategy_name = st.selectbox("SELECT STRATEGY", options=strategy_names, index=0, key="rule_strategy")
+                selected_strategy_id = rule_strategies[strategy_names.index(selected_strategy_name)]["id"]
+                st.caption(rule_strategies[strategy_names.index(selected_strategy_name)]["description"])
+            else:
+                selected_strategy_id = "dual_ma"
+                selected_strategy_name = "双均线策略"
+            
+            st.markdown("### PARAMETERS")
+            strategy_params = {}
+            
+            if selected_strategy_id == "dual_ma":
+                fast_window = st.slider("FAST WINDOW", 5, 30, 10, key="rule_fast")
+                slow_window = st.slider("SLOW WINDOW", 10, 60, 30, key="rule_slow")
+                strategy_params = {"fast_window": fast_window, "slow_window": slow_window}
+            elif selected_strategy_id == "rsi":
+                rsi_period = st.slider("RSI PERIOD", 5, 20, 14, key="rule_rsi_p")
+                oversold = st.slider("OVERSOLD", 10, 40, 30, key="rule_os")
+                overbought = st.slider("OVERBOUGHT", 60, 90, 70, key="rule_ob")
+                strategy_params = {"rsi_period": rsi_period, "oversold": oversold, "overbought": overbought}
+            elif selected_strategy_id == "macd":
+                fast_period = st.slider("FAST PERIOD", 5, 20, 12, key="rule_macd_f")
+                slow_period = st.slider("SLOW PERIOD", 15, 40, 26, key="rule_macd_s")
+                signal_period = st.slider("SIGNAL PERIOD", 5, 15, 9, key="rule_macd_sig")
+                strategy_params = {"fast_period": fast_period, "slow_period": slow_period, "signal_period": signal_period}
+            elif selected_strategy_id == "bollinger":
+                window = st.slider("WINDOW", 10, 30, 20, key="rule_boll_w")
+                num_std = st.slider("STD MULTIPLIER", 1.0, 3.0, 2.0, 0.25, key="rule_boll_std")
+                strategy_params = {"window": window, "num_std": num_std}
+            
+            st.divider()
+            run_backtest_clicked = st.button("RUN BACKTEST", type="primary", width='stretch', key="rule_run")
         
-        # 数据源选择
-        data_source = st.radio("SOURCE", ["AKSHARE (股票)", "模拟数据 (MOCK)"], horizontal=True, index=1)
+        # 数据源
+        col_left, col_right = st.columns([1, 1])
         
-        symbol = "sh600000"  # 默认浦发银行
+        with col_left:
+            st.markdown("### DATA SOURCE")
+            data_source = st.radio("SOURCE", ["AKSHARE (股票)", "模拟数据 (MOCK)"], horizontal=True, index=1, key="rule_data_src")
+            symbol = "sh600000"
+            
+            if data_source == "AKSHARE (股票)":
+                symbol = st.text_input("STOCK CODE", value="sh600000", key="rule_symbol").lower()
+            
+            col_start, col_end = st.columns(2)
+            with col_start:
+                start_date = st.date_input("START", value=datetime(2021, 1, 1), key="rule_start")
+            with col_end:
+                end_date = st.date_input("END", value=datetime(2023, 12, 31), key="rule_end")
+            
+            start_date_str = start_date.strftime("%Y%m%d")
+            end_date_str = end_date.strftime("%Y%m%d")
+            
+            enable_benchmark = st.checkbox("启用基准对比", value=False, key="rule_bench")
         
-        if data_source == "AKSHARE (股票)":
-            symbol = st.text_input("STOCK CODE (e.g. sh600000)", value="sh600000").lower()
-        
-        # 日期范围
-        col_start, col_end = st.columns(2)
-        with col_start:
-            start_date = st.date_input("START", value=datetime(2021, 1, 1))
-        with col_end:
-            end_date = st.date_input("END", value=datetime(2023, 12, 31))
-        
-        start_date_str = start_date.strftime("%Y%m%d")
-        end_date_str = end_date.strftime("%Y%m%d")
-        
-        # 基准对比选项
-        enable_benchmark = st.checkbox("启用基准对比", value=False)
-        benchmark_returns = None
-        if enable_benchmark and data_source == "AKSHARE (股票)":
-            st.caption("基准: 买入持有策略")
-    
-    with col_right:
-        st.markdown("### QUICK TEMPLATES")
-        
-        # 快速模板
-        templates = {
-            "双均线 (10,30) + 浦发银行": {
-                "strategy": "dual_ma", "params": {"fast_window": 10, "slow_window": 30},
-                "symbol": "sh600000", "start": "20210101", "end": "20231231"
-            },
-            "RSI(14) + 贵州茅台": {
-                "strategy": "rsi", "params": {"rsi_period": 14, "oversold": 30, "overbought": 70},
-                "symbol": "sh600519", "start": "20220101", "end": "20231231"
-            },
-            "MACD + 中国平安": {
-                "strategy": "macd", "params": {"fast_period": 12, "slow_period": 26, "signal_period": 9},
-                "symbol": "sh601318", "start": "20220101", "end": "20231231"
-            },
-            "布林带(20,2) + 比亚迪": {
-                "strategy": "bollinger", "params": {"window": 20, "num_std": 2.0},
-                "symbol": "sz002594", "start": "20220101", "end": "20231231"
+        with col_right:
+            st.markdown("### QUICK TEMPLATES")
+            templates = {
+                "双均线 (10,30) + 浦发银行": {
+                    "strategy": "dual_ma", "params": {"fast_window": 10, "slow_window": 30},
+                    "symbol": "sh600000", "start": "20210101", "end": "20231231"
+                },
+                "RSI(14) + 贵州茅台": {
+                    "strategy": "rsi", "params": {"rsi_period": 14, "oversold": 30, "overbought": 70},
+                    "symbol": "sh600519", "start": "20220101", "end": "20231231"
+                },
+                "MACD + 中国平安": {
+                    "strategy": "macd", "params": {"fast_period": 12, "slow_period": 26, "signal_period": 9},
+                    "symbol": "sh601318", "start": "20220101", "end": "20231231"
+                },
+                "布林带(20,2) + 比亚迪": {
+                    "strategy": "bollinger", "params": {"window": 20, "num_std": 2.0},
+                    "symbol": "sz002594", "start": "20220101", "end": "20231231"
+                }
             }
-        }
+            
+            for template_name, template_config in templates.items():
+                if st.button(template_name, width='stretch', key=f"tpl_{template_name}"):
+                    st.session_state.quant_template = template_config
+            
+            if "quant_template" in st.session_state:
+                template = st.session_state.quant_template
+                selected_strategy_id = template["strategy"]
+                strategy_params = template["params"]
+                symbol = template["symbol"]
+                start_date_str = template["start"]
+                end_date_str = template["end"]
+                st.info(f"已加载模板: {template_name}")
         
-        for template_name, template_config in templates.items():
-            if st.button(template_name, use_container_width=True):
-                # 更新所有参数
-                st.session_state.quant_template = template_config
+        # 执行回测
+        if run_backtest_clicked:
+            _execute_backtest(
+                data_source, symbol, start_date_str, end_date_str,
+                selected_strategy_id, strategy_params, selected_strategy_name,
+                initial_cash, commission, enable_benchmark
+            )
         
-        if "quant_template" in st.session_state:
-            template = st.session_state.quant_template
-            selected_strategy_id = template["strategy"]
-            strategy_params = template["params"]
-            symbol = template["symbol"]
-            start_date_str = template["start"]
-            end_date_str = template["end"]
-            st.info(f"已加载: {template_name}")
+        with st.expander("📖 规则策略使用指南", expanded=False):
+            st.markdown("""
+            ### 规则策略回测
+            - **双均线**: 短期均线与长期均线交叉信号
+            - **RSI**: 相对强弱指数超买超卖
+            - **MACD**: 指数平滑移动平均线
+            - **布林带**: 价格通道突破策略
+            """)
     
-    # 执行回测
-    if run_backtest_clicked:
-        with st.spinner("Running backtest..."):
-            try:
-                # 获取数据
-                if data_source == "AKSHARE (股票)":
-                    import akshare as ak
-                    with st.spinner("Fetching data..."):
-                        df = ak.stock_zh_a_daily(symbol=symbol, start_date=start_date_str, end_date=end_date_str)
-                        df["symbol"] = symbol
-                else:
-                    # 生成模拟数据
-                    import numpy as np
-                    dates = pd.date_range(start=start_date_str[:4] + "-" + start_date_str[4:6] + "-" + start_date_str[6:],
-                                         end=end_date_str[:4] + "-" + end_date_str[4:6] + "-" + end_date_str[6:])
-                    n = len(dates)
-                    np.random.seed(42)
-                    returns = np.random.normal(0.0005, 0.02, n)
-                    price = 100 * np.cumprod(1 + returns)
-                    df = pd.DataFrame({
-                        "date": dates,
-                        "open": price,
-                        "high": price * 1.01,
-                        "low": price * 0.99,
-                        "close": price,
-                        "volume": 10000,
-                        "symbol": symbol
-                    })
+    # ===========================
+    # Tab 2: ML 策略训练
+    # ===========================
+    with tab_ml:
+        if not ML_AVAILABLE:
+            st.warning("ML 策略模块未安装。请确保 `src/ml_strategy.py` 存在且 scikit-learn 已安装。")
+            st.code("pip install scikit-learn xgboost lightgbm", language="bash")
+            return
+        
+        st.markdown("### ML 策略 Walk-forward 训练")
+        st.caption("使用机器学习模型预测涨跌，通过 Walk-forward Validation 防止未来函数泄露")
+        
+        col_ml_config, col_ml_data = st.columns([1, 2])
+        
+        with col_ml_config:
+            st.markdown("#### 模型配置")
+            
+            ml_strategy_list = get_ml_strategies()
+            ml_strategy_names = [s["name"] for s in ml_strategy_list]
+            selected_ml_name = st.selectbox("选择 ML 模型", options=ml_strategy_names, index=0, key="ml_model_select")
+            selected_ml_id = ml_strategy_list[ml_strategy_names.index(selected_ml_name)]["id"]
+            
+            st.caption(ml_strategy_list[ml_strategy_names.index(selected_ml_name)]["description"])
+            
+            st.divider()
+            st.markdown("#### Walk-forward 参数")
+            
+            ml_train_window = st.number_input("训练窗口", value=50, min_value=20, max_value=500, key="ml_train_w")
+            ml_test_window = st.number_input("测试窗口", value=20, min_value=5, max_value=100, key="ml_test_w")
+            ml_rolling_step = st.number_input("滚动步长", value=10, min_value=1, max_value=50, key="ml_roll_step")
+            
+            st.divider()
+            st.markdown("#### 特征配置")
+            ml_feature_config = st.selectbox(
+                "特征集", 
+                options=list(DEFAULT_FEATURE_CONFIGS.keys()),
+                index=0,
+                key="ml_feature_cfg",
+                help="basic: 收益率 | technical: +RSI/MACD/布林带 | extended: 全部特征"
+            )
+            
+            # 显示特征详情
+            feat_desc = {
+                "basic": "ret1, ret2, ret3, ret5 (收益率特征)",
+                "technical": "ret1, ret2, rsi_14, macd_diff, bollinger_pos (技术指标)",
+                "extended": "全部特征: 收益率 + RSI + MACD + 布林带 + 量比 + 均线比",
+            }
+            st.caption(feat_desc.get(ml_feature_config, ""))
+            
+            # 模型特定参数
+            template_info = ML_STRATEGY_TEMPLATES.get(selected_ml_id, {})
+            model_type = template_info.get("model_type", "")
+            
+            ml_model_params = {}
+            if model_type == "xgboost":
+                ml_model_params["max_depth"] = st.number_input("最大深度", value=5, min_value=2, max_value=10, key="ml_xgb_depth")
+                ml_model_params["n_estimators"] = st.number_input("树数量", value=100, min_value=10, max_value=500, key="ml_xgb_n")
+            elif model_type == "lightgbm":
+                ml_model_params["num_leaves"] = st.number_input("叶子数", value=31, min_value=10, max_value=100, key="ml_lgb_leaves")
+                ml_model_params["n_estimators"] = st.number_input("树数量", value=100, min_value=10, max_value=500, key="ml_lgb_n")
+            elif model_type == "random_forest":
+                ml_model_params["n_estimators"] = st.number_input("树数量", value=100, min_value=10, max_value=500, key="ml_rf_n")
+            elif model_type == "lstm":
+                ml_model_params["hidden_dim"] = st.number_input("隐藏层维度", value=32, min_value=8, max_value=256, key="ml_lstm_hidden")
+                ml_model_params["num_layers"] = st.number_input("LSTM 层数", value=2, min_value=1, max_value=4, key="ml_lstm_layers")
+                ml_model_params["epochs"] = st.number_input("训练轮数", value=20, min_value=5, max_value=100, key="ml_lstm_epochs")
+                ml_model_params["lr"] = st.number_input("学习率", value=0.001, min_value=0.0001, max_value=0.01, step=0.0001, format="%f", key="ml_lstm_lr")
+            
+            st.divider()
+            
+            # 数据源配置
+            ml_data_source = st.radio("数据源", ["模拟数据 (MOCK)", "AKSHARE (股票)"], horizontal=True, index=0, key="ml_data_src")
+            ml_symbol = "sh600000"
+            if ml_data_source == "AKSHARE (股票)":
+                ml_symbol = st.text_input("股票代码", value="sh600000", key="ml_symbol").lower()
+            
+            col_ml_start, col_ml_end = st.columns(2)
+            with col_ml_start:
+                ml_start_date = st.date_input("开始日期", value=datetime(2021, 1, 1), key="ml_start")
+            with col_ml_end:
+                ml_end_date = st.date_input("结束日期", value=datetime(2023, 12, 31), key="ml_end")
+            
+            ml_initial_cash = st.number_input("初始资金", value=100000.0, min_value=10000.0, key="ml_cash")
+            ml_commission = st.number_input("佣金 (%)", value=0.03, min_value=0.0, max_value=1.0, step=0.01, key="ml_comm") / 100
+            
+            st.divider()
+            
+            # 快照选项
+            ml_save_checkpoint = st.text_input("回测后保存快照名称（可选）", value="", placeholder="如: xgboost_phase1", key="ml_snapshot_name")
+            
+            run_ml_backtest = st.button("运行 ML 回测", type="primary", width='stretch', key="ml_run")
+        
+        with col_ml_data:
+            st.markdown("#### ML 策略说明")
+            
+            ml_explanation = {
+                "logistic_regression": "**逻辑回归**: 线性分类模型，适合特征与标签呈线性关系的场景。训练快速，不易过拟合。",
+                "xgboost": "**XGBoost**: 梯度提升树，非线性模型，支持特征重要性分析。适合中等规模数据，准确率高。",
+                "lightgbm": "**LightGBM**: 高效梯度提升树，训练速度比 XGBoost 更快，内存占用更少。适合大规模数据。",
+                "random_forest": "**随机森林**: 集成学习，多棵决策树投票。鲁棒性强，不易过拟合，但训练较慢。",
+                "lstm": "**LSTM**: 长短期记忆网络，深度学习序列模型。适合捕捉时序依赖，但训练耗时，需要 PyTorch。",
+            }
+            st.markdown(ml_explanation.get(model_type, ""))
+            
+            st.divider()
+            st.markdown("#### Walk-forward Validation 原理")
+            st.markdown("""
+            Walk-forward 是时间序列正确的交叉验证方式：
+            
+            1. **训练窗口** (train_window): 使用最近 N 个 bar 训练模型
+            2. **测试窗口** (test_window): 在接下来的 M 个 bar 上预测
+            3. **滚动步长** (rolling_step): 每隔 K 个 bar 重新训练
+            
+            与传统 K-Fold 不同，Walk-forward 严格保证训练数据在测试数据之前，
+            避免未来函数泄露 (look-ahead bias)。
+            """)
+        
+        # 执行 ML 回测
+        if run_ml_backtest:
+            with st.spinner("运行 ML Walk-forward 回测..."):
+                try:
+                    # 获取数据
+                    df = _load_market_data(ml_data_source, ml_symbol, ml_start_date, ml_end_date)
+                    
+                    if df is not None:
+                        st.success(f"✓ 数据加载完成: {len(df)} bars")
+                        
+                        # 合并参数
+                        ml_params = {
+                            "train_window": ml_train_window,
+                            "test_window": ml_test_window,
+                            "rolling_step": ml_rolling_step,
+                            "feature_config": ml_feature_config,
+                            **ml_model_params,
+                        }
+                        
+                        from src.quantitative import create_streaming_callback
+                        stream_callback = create_streaming_callback()
+                        
+                        result = run_backtest(
+                            data=df,
+                            strategy_type=selected_ml_id,
+                            strategy_params=ml_params,
+                            symbol=ml_symbol,
+                            start_date=ml_start_date.strftime("%Y%m%d"),
+                            end_date=ml_end_date.strftime("%Y%m%d"),
+                            initial_cash=ml_initial_cash,
+                            commission_rate=ml_commission,
+                            on_event=stream_callback,
+                        )
+                        
+                        _display_backtest_result(result, selected_ml_name, ml_symbol, df)
+                        
+                        # 保存快照
+                        if ml_save_checkpoint and result.get("success") and result.get("result_object"):
+                            try:
+                                from src.snapshot_manager import save_snapshot
+                                res_obj = result["result_object"]
+                                engine = res_obj.engine if hasattr(res_obj, 'engine') else res_obj
+                                strategy = res_obj.strategy if hasattr(res_obj, 'strategy') else None
+                                if strategy:
+                                    path = save_snapshot(
+                                        engine, strategy, ml_save_checkpoint,
+                                        metadata={
+                                            "strategy_type": selected_ml_id,
+                                            "model_type": model_type,
+                                            "train_window": ml_train_window,
+                                            "test_window": ml_test_window,
+                                            "symbols": [ml_symbol],
+                                            "final_cash": result["metrics"].get("final_value", 0),
+                                            "total_return_pct": result["metrics"].get("total_return_pct", 0),
+                                        }
+                                    )
+                                    st.success(f"✓ 快照已保存: {ml_save_checkpoint}")
+                            except Exception as e:
+                                st.warning(f"快照保存失败: {e}")
+                    
+                except Exception as e:
+                    st.error(f"ML 回测失败: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+    
+    # ===========================
+    # Tab 3: 快照管理
+    # ===========================
+    with tab_snapshot:
+        if not SNAPSHOT_AVAILABLE:
+            st.warning("快照管理模块未安装")
+            return
+        
+        st.markdown("### 热启动快照管理")
+        st.caption("保存回测引擎状态（持仓、订单、策略变量），在未来恢复继续运行")
+        
+        # 刷新
+        if st.button("🔄 刷新快照列表", key="refresh_snapshots"):
+            st.rerun()
+        
+        snapshots = list_snapshots()
+        
+        if not snapshots:
+            st.info("暂无已保存的快照。运行 ML 回测时填写快照名称即可自动保存。")
+        else:
+            st.markdown(f"**共 {len(snapshots)} 个快照**")
+            
+            for snap in snapshots:
+                with st.container():
+                    col_info, col_action = st.columns([3, 1])
+                    
+                    with col_info:
+                        name = snap.get("name", "unknown")
+                        created = snap.get("created_at", "N/A")[:19]
+                        strategy = snap.get("strategy_type", "N/A")
+                        ret = snap.get("total_return_pct", 0)
+                        size_mb = snap.get("file_size_mb", 0)
+                        
+                        ret_color = "green" if ret >= 0 else "red"
+                        st.markdown(
+                            f"**{name}** | {strategy} | "
+                            f"<span style='color:{ret_color}'>{ret:.2f}%</span> | "
+                            f"{size_mb:.2f}MB | {created}",
+                            unsafe_allow_html=True
+                        )
+                    
+                    with col_action:
+                        col_resume, col_delete = st.columns(2)
+                        
+                        with col_resume:
+                            if st.button("恢复", key=f"resume_{name}"):
+                                st.session_state.resume_snapshot_name = name
+                        
+                        with col_delete:
+                            if st.button("删除", key=f"delete_{name}"):
+                                if delete_snapshot(name):
+                                    st.success(f"已删除: {name}")
+                                    st.rerun()
+                                else:
+                                    st.error("删除失败")
                 
-                # 生成基准收益（买入持有）
+                st.divider()
+        
+        # 快照恢复面板
+        if "resume_snapshot_name" in st.session_state:
+            snap_name = st.session_state.resume_snapshot_name
+            st.markdown(f"### 恢复快照: {snap_name}")
+            
+            col_res_data, col_res_config = st.columns(2)
+            
+            with col_res_data:
+                res_data_source = st.radio("新数据源", ["模拟数据 (MOCK)", "AKSHARE (股票)"], horizontal=True, index=0, key="res_data_src")
+                res_symbol = "sh600000"
+                if res_data_source == "AKSHARE (股票)":
+                    res_symbol = st.text_input("股票代码", value="sh600000", key="res_symbol").lower()
+                
+                col_res_start, col_res_end = st.columns(2)
+                with col_res_start:
+                    res_start_date = st.date_input("开始日期", value=datetime(2024, 1, 1), key="res_start")
+                with col_res_end:
+                    res_end_date = st.date_input("结束日期", value=datetime(2024, 6, 30), key="res_end")
+            
+            with col_res_config:
+                st.markdown("#### 注意事项")
+                st.warning("""
+                热启动恢复需注意：
+                - Instrument 需重新注册（费用配置不保存在快照中）
+                - 数据连续性：Phase 2 开始时间应紧接 Phase 1 结束时间
+                - 策略的 `on_start()` 中需通过 `is_restored` 避免覆盖已恢复状态
+                """)
+                
+                res_commission = st.number_input("佣金费率", value=0.0003, format="%f", key="res_comm")
+                res_stamp_tax = st.number_input("印花税率", value=0.001, format="%f", key="res_stamp")
+                res_transfer = st.number_input("过户费率", value=0.00001, format="%f", key="res_transfer")
+            
+            if st.button("从快照恢复并运行", type="primary", key="run_resume"):
+                with st.spinner("正在从快照恢复..."):
+                    try:
+                        df = _load_market_data(res_data_source, res_symbol, res_start_date, res_end_date)
+                        
+                        if df is not None:
+                            from src.snapshot_manager import resume_snapshot
+                            result = resume_snapshot(
+                                snap_name, df,
+                                symbols=res_symbol,
+                                commission_rate=res_commission,
+                                stamp_tax_rate=res_stamp_tax,
+                                transfer_fee_rate=res_transfer,
+                            )
+                            
+                            if result.get("success"):
+                                metrics = result["metrics"]
+                                st.success(f"✓ 快照恢复成功！")
+                                
+                                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                                with col_m1:
+                                    st.metric("TOTAL RETURN", f"{metrics.get('total_return_pct', 0):.2f}%")
+                                with col_m2:
+                                    st.metric("SHARPE", f"{metrics.get('sharpe_ratio', 0):.2f}")
+                                with col_m3:
+                                    st.metric("MAX DD", f"{metrics.get('max_drawdown_pct', 0):.2f}%")
+                                with col_m4:
+                                    st.metric("TRADES", metrics.get("total_trades", 0))
+                            else:
+                                st.error(f"恢复失败: {result.get('error', 'Unknown')}")
+                    except Exception as e:
+                        st.error(f"快照恢复出错: {str(e)}")
+            
+            if st.button("取消恢复", key="cancel_resume"):
+                del st.session_state.resume_snapshot_name
+                st.rerun()
+    
+    # ===========================
+    # Tab 4: 多策略模拟盘
+    # ===========================
+    with tab_multi:
+        if not MULTI_STRATEGY_AVAILABLE:
+            st.warning("多策略模块未安装")
+            return
+        
+        st.markdown("### 多策略模拟盘")
+        st.caption("配置多个策略槽位，运行组合回测，计算跨策略指标")
+        
+        simulator = get_multi_strategy_simulator()
+        
+        col_slots, slot_result = st.columns([1, 2])
+        
+        with col_slots:
+            st.markdown("#### 策略槽位配置")
+            
+            # 显示已有槽位
+            current_slots = simulator.list_slots()
+            if current_slots:
+                for slot_data in current_slots:
+                    slot_id = slot_data["slot_id"]
+                    with st.expander(f"Slot: {slot_id}", expanded=False):
+                        st.json(slot_data)
+                        if st.button(f"移除 {slot_id}", key=f"remove_slot_{slot_id}"):
+                            simulator.remove_slot(slot_id)
+                            st.rerun()
+            else:
+                st.info("尚未添加策略槽位")
+            
+            st.divider()
+            st.markdown("#### 添加策略槽位")
+            
+            new_slot_id = st.text_input("槽位 ID", value="alpha", key="new_slot_id")
+            new_slot_strategy = st.selectbox(
+                "策略",
+                options=list(STRATEGY_TEMPLATES.keys()),
+                format_func=lambda x: STRATEGY_TEMPLATES[x]["name"],
+                key="new_slot_strategy"
+            )
+            new_slot_weight = st.number_input("资金权重", value=1.0, min_value=0.1, key="new_slot_weight")
+            new_slot_max_size = st.number_input("最大下单量", value=10, min_value=1, key="new_slot_max_size")
+            
+            if st.button("添加槽位", key="add_slot"):
+                try:
+                    from src.quantitative import create_strategy_instance
+                    strategy_class = create_strategy_instance(new_slot_strategy, {})
+                    simulator.add_slot(
+                        slot_id=new_slot_id,
+                        strategy_class=strategy_class,
+                        strategy_params={},
+                        max_order_size=new_slot_max_size,
+                        weight=new_slot_weight,
+                        description=STRATEGY_TEMPLATES[new_slot_strategy]["name"],
+                    )
+                    st.success(f"已添加槽位: {new_slot_id}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"添加失败: {e}")
+            
+            st.divider()
+            
+            # 多策略回测
+            st.markdown("#### 运行组合回测")
+            multi_symbol = st.text_input("标的", value="sh600000", key="multi_symbol").lower()
+            multi_initial_cash = st.number_input("初始资金", value=100000.0, key="multi_cash")
+            
+            if st.button("运行多策略回测", type="primary", key="run_multi"):
+                if not current_slots:
+                    st.warning("请先添加至少一个策略槽位")
+                else:
+                    with st.spinner("运行多策略回测..."):
+                        try:
+                            df = _load_market_data("模拟数据 (MOCK)", multi_symbol,
+                                                   datetime(2022, 1, 1), datetime(2023, 12, 31))
+                            
+                            if df is not None:
+                                result = simulator.run_simulation(
+                                    data=df,
+                                    symbols=multi_symbol,
+                                    initial_cash=multi_initial_cash,
+                                )
+                                
+                                st.session_state.multi_result = result
+                        except Exception as e:
+                            st.error(f"多策略回测失败: {e}")
+        
+        with slot_result:
+            if "multi_result" in st.session_state:
+                result = st.session_state.multi_result
+                
+                if result.get("success"):
+                    metrics = result["metrics"]
+                    cross = result.get("cross_slot_metrics", {})
+                    
+                    st.success(f"✓ 多策略回测完成 ({result.get('slot_count', 0)} 个槽位)")
+                    
+                    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                    with col_m1:
+                        st.metric("组合收益率", f"{metrics.get('total_return_pct', 0):.2f}%")
+                    with col_m2:
+                        st.metric("组合夏普", f"{metrics.get('sharpe_ratio', 0):.2f}")
+                    with col_m3:
+                        st.metric("组合最大回撤", f"{metrics.get('max_drawdown_pct', 0):.2f}%")
+                    with col_m4:
+                        st.metric("组合交易次数", metrics.get("total_trades", 0))
+                    
+                    # 各槽位表现
+                    slot_perfs = cross.get("slot_performances", {})
+                    if slot_perfs:
+                        st.markdown("#### 各槽位表现")
+                        perf_rows = []
+                        for slot_id, perf in slot_perfs.items():
+                            perf_rows.append({
+                                "槽位": slot_id,
+                                "收益率%": f"{perf.get('return_pct', 0):.2f}",
+                                "夏普": f"{perf.get('sharpe_ratio', 0):.2f}",
+                                "最大回撤%": f"{perf.get('max_drawdown_pct', 0):.2f}",
+                                "胜率%": f"{perf.get('win_rate', 0):.1f}",
+                            })
+                        st.dataframe(pd.DataFrame(perf_rows), width='stretch', hide_index=True)
+                else:
+                    st.error(f"多策略回测失败: {result.get('error', 'Unknown')}")
+
+
+def _load_market_data(data_source, symbol, start_date, end_date):
+    """加载市场数据的辅助函数"""
+    import numpy as np
+    
+    start_date_str = start_date.strftime("%Y%m%d") if hasattr(start_date, 'strftime') else str(start_date)
+    end_date_str = end_date.strftime("%Y%m%d") if hasattr(end_date, 'strftime') else str(end_date)
+    
+    if data_source == "AKSHARE (股票)":
+        import akshare as ak
+        df = ak.stock_zh_a_daily(symbol=symbol, start_date=start_date_str, end_date=end_date_str)
+        df["symbol"] = symbol
+    else:
+        # 生成模拟数据
+        dates = pd.date_range(
+            start=start_date_str[:4] + "-" + start_date_str[4:6] + "-" + start_date_str[6:],
+            end=end_date_str[:4] + "-" + end_date_str[4:6] + "-" + end_date_str[6:]
+        )
+        n = len(dates)
+        np.random.seed(42)
+        returns = np.random.normal(0.0005, 0.02, n)
+        price = 100 * np.cumprod(1 + returns)
+        df = pd.DataFrame({
+            "date": dates,
+            "open": price,
+            "high": price * 1.01,
+            "low": price * 0.99,
+            "close": price,
+            "volume": 10000,
+            "symbol": symbol
+        })
+    
+    return df
+
+
+def _execute_backtest(data_source, symbol, start_date_str, end_date_str,
+                      strategy_type, strategy_params, strategy_name,
+                      initial_cash, commission, enable_benchmark):
+    """执行回测的辅助函数"""
+    with st.spinner("Running backtest..."):
+        try:
+            df = _load_market_data(data_source, symbol, start_date_str, end_date_str)
+            
+            if df is not None:
                 benchmark_returns = None
                 if enable_benchmark:
                     benchmark_returns = (df.set_index("date")["close"].pct_change().fillna(0.0).rename("BENCHMARK"))
                 
                 st.success(f"✓ Data loaded: {len(df)} bars")
                 
-                # 创建流式回调
                 from src.quantitative import create_streaming_callback
                 stream_callback = create_streaming_callback()
                 
-                # 运行回测
                 result = run_backtest(
                     data=df,
-                    strategy_type=selected_strategy_id,
+                    strategy_type=strategy_type,
                     strategy_params=strategy_params,
                     symbol=symbol,
                     start_date=start_date_str,
@@ -1052,103 +1577,83 @@ def quant_page():
                     on_event=stream_callback
                 )
                 
-                if result.get("success"):
-                    metrics = result["metrics"]
-                    
-                    # 显示指标
-                    st.divider()
-                    st.markdown("### 📊 PERFORMANCE METRICS")
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    
-                    total_return = metrics.get("total_return_pct", 0)
-                    with col1:
-                        delta_color = "normal" if total_return >= 0 else "inverse"
-                        st.metric("TOTAL RETURN", f"{total_return:.2f}%", delta="↑" if total_return >= 0 else "↓", delta_color=delta_color)
-                    
-                    with col2:
-                        st.metric("SHARPE RATIO", f"{metrics.get('sharpe_ratio', 0):.2f}")
-                    
-                    with col3:
-                        st.metric("MAX DRAWDOWN", f"{metrics.get('max_drawdown_pct', 0):.2f}%")
-                    
-                    with col4:
-                        st.metric("TRADES", metrics.get("total_trades", 0))
-                    
-                    # 详细指标表格
-                    st.markdown("#### DETAILED METRICS")
-                    metrics_df = pd.DataFrame([
-                        {"指标": "年化收益率", "数值": f"{metrics.get('annualized_return', 0):.2f}%"},
-                        {"指标": "胜率", "数值": f"{metrics.get('win_rate', 0):.1f}%"},
-                        {"指标": "夏普比率", "数值": f"{metrics.get('sharpe_ratio', 0):.2f}"},
-                        {"指标": "最大回撤", "数值": f"{metrics.get('max_drawdown_pct', 0):.2f}%"},
-                        {"指标": "总交易次数", "数值": metrics.get("total_trades", 0)},
-                        {"指标": "最终资产", "数值": f"¥{metrics.get('final_value', 0):,.2f}"},
-                    ])
-                    st.dataframe(metrics_df, use_container_width=True, hide_index=True)
-                    
-                    # 生成并显示报告（支持基准对比）
-                    st.divider()
-                    st.markdown("### VISUALIZATION")
-                    
-                    report_path = generate_report(
-                        result,
-                        strategy_name=selected_strategy_name,
-                        symbol=symbol,
-                        market_data=df,
-                        benchmark_data=benchmark_returns
-                    )
-                    
-                    if report_path and Path(report_path).exists():
-                        with open(report_path, 'r', encoding='utf-8') as f:
-                            report_html = f.read()
-                        st.components.v1.html(report_html, height=600, scrolling=True)
-                        
-                        # 下载报告按钮
-                        with open(report_path, 'rb') as f:
-                            st.download_button(
-                                "DOWNLOAD REPORT (HTML)",
-                                data=f,
-                                file_name=Path(report_path).name,
-                                mime="text/html",
-                                use_container_width=True
-                            )
-                    else:
-                        st.info("报告生成中，请在命令行查看...")
-                        
-                else:
-                    st.error(f"Backtest failed: {result.get('error', 'Unknown error')}")
-                    
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
-                import traceback
-                st.code(traceback.format_exc())
-    
-    # 使用说明
-    with st.expander("📖 USAGE GUIDE", expanded=False):
-        st.markdown("""
-        ### 量化策略回测系统
-        
-        **1. 选择策略模板**
-        - 双均线: 短期均线与长期均线交叉信号
-        - RSI: 相对强弱指数超买超卖
-        - MACD: 指数平滑移动平均线
-        - 布林带: 价格通道突破策略
-        
-        **2. 配置参数**
-        - 调整策略的周期参数
-        - 设置初始资金和佣金
-        
-        **3. 运行回测**
-        - 点击 "RUN BACKTEST" 开始回测
-        - 查看绩效指标和可视化报告
-        
-        **4. 查看报告**
-        - HTML 报告包含 K 线图和交易标记
-        - 可下载保存
-        """)
+                _display_backtest_result(result, strategy_name, symbol, df, benchmark_returns)
+            else:
+                st.error("数据加载失败")
+                
+        except Exception as e:
+            st.error(f"Error: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
 
-        st.code("pip install neo4j", language="bash")
+
+def _display_backtest_result(result, strategy_name, symbol, df, benchmark_returns=None):
+    """显示回测结果的辅助函数"""
+    if result.get("success"):
+        metrics = result["metrics"]
+        
+        st.divider()
+        st.markdown("### 📊 PERFORMANCE METRICS")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        total_return = metrics.get("total_return_pct", 0)
+        with col1:
+            delta_color = "normal" if total_return >= 0 else "inverse"
+            st.metric("TOTAL RETURN", f"{total_return:.2f}%", delta="↑" if total_return >= 0 else "↓", delta_color=delta_color)
+        
+        with col2:
+            st.metric("SHARPE RATIO", f"{metrics.get('sharpe_ratio', 0):.2f}")
+        
+        with col3:
+            st.metric("MAX DRAWDOWN", f"{metrics.get('max_drawdown_pct', 0):.2f}%")
+        
+        with col4:
+            st.metric("TRADES", metrics.get("total_trades", 0))
+        
+        # 详细指标表格
+        st.markdown("#### DETAILED METRICS")
+        metrics_df = pd.DataFrame([
+            {"指标": "年化收益率", "数值": f"{metrics.get('annualized_return', 0):.2f}%"},
+            {"指标": "胜率", "数值": f"{metrics.get('win_rate', 0):.1f}%"},
+            {"指标": "夏普比率", "数值": f"{metrics.get('sharpe_ratio', 0):.2f}"},
+            {"指标": "最大回撤", "数值": f"{metrics.get('max_drawdown_pct', 0):.2f}%"},
+            {"指标": "总交易次数", "数值": metrics.get("total_trades", 0)},
+            {"指标": "最终资产", "数值": f"¥{metrics.get('final_value', 0):,.2f}"},
+        ])
+        st.dataframe(metrics_df, width='stretch', hide_index=True)
+        
+        # 生成报告
+        st.divider()
+        st.markdown("### VISUALIZATION")
+        
+        report_path = generate_report(
+            result,
+            strategy_name=strategy_name,
+            symbol=symbol,
+            market_data=df,
+            benchmark_data=benchmark_returns
+        )
+        
+        if report_path and Path(report_path).exists():
+            with open(report_path, 'r', encoding='utf-8') as f:
+                report_html = f.read()
+            st.components.v1.html(report_html, height=600, scrolling=True)
+            
+            with open(report_path, 'rb') as f:
+                st.download_button(
+                    "DOWNLOAD REPORT (HTML)",
+                    data=f,
+                    file_name=Path(report_path).name,
+                    mime="text/html",
+                    width='stretch'
+                )
+        else:
+            st.info("报告生成中，请在命令行查看...")
+            
+    else:
+        st.error(f"Backtest failed: {result.get('error', 'Unknown error')}")
+
 
 
 def kg_page():
@@ -1240,10 +1745,10 @@ def kg_page():
 
         for i, (label, name) in enumerate(examples.items()):
             col = [col1, col2, col3][i]
-            if col.button(label, use_container_width=True):
+            if col.button(label, width='stretch'):
                 query_input = name
 
-        if st.button("查询关系", type="primary", use_container_width=True) and query_input:
+        if st.button("查询关系", type="primary", width='stretch') and query_input:
             with st.spinner("查询中..."):
                 try:
                     retriever = get_kg_retriever()
@@ -1256,14 +1761,14 @@ def kg_page():
                         st.markdown("#### 相关实体")
                         entities_df = pd.DataFrame(result.entities)
                         if not entities_df.empty:
-                            st.dataframe(entities_df, use_container_width=True, hide_index=True)
+                            st.dataframe(entities_df, width='stretch', hide_index=True)
 
                         # 显示关系
                         if result.relations:
                             st.markdown("#### 关系网络")
                             relations_df = pd.DataFrame(result.relations)
                             if not relations_df.empty:
-                                st.dataframe(relations_df, use_container_width=True, hide_index=True)
+                                st.dataframe(relations_df, width='stretch', hide_index=True)
                     else:
                         st.info("未找到相关结果")
 
@@ -1288,7 +1793,7 @@ def kg_page():
         if selected_event:
             event_input = selected_event
 
-        if st.button("分析影响", type="primary", use_container_width=True) and event_input:
+        if st.button("分析影响", type="primary", width='stretch') and event_input:
             with st.spinner("分析中..."):
                 try:
                     retriever = get_kg_retriever()
@@ -1301,7 +1806,7 @@ def kg_page():
                         st.markdown("#### 受影响的实体")
                         entities_df = pd.DataFrame(result.entities)
                         if not entities_df.empty:
-                            st.dataframe(entities_df, use_container_width=True, hide_index=True)
+                            st.dataframe(entities_df, width='stretch', hide_index=True)
 
                         # 可视化影响链
                         if result.paths:
@@ -1340,7 +1845,7 @@ def kg_page():
             help="搜索特定的实体"
         )
 
-        if st.button("搜索", type="primary", use_container_width=True):
+        if st.button("搜索", type="primary", width='stretch'):
             with st.spinner("搜索中..."):
                 try:
                     retriever = get_kg_retriever()
@@ -1360,7 +1865,7 @@ def kg_page():
 
                         if entities:
                             df = pd.DataFrame(entities)
-                            st.dataframe(df, use_container_width=True, hide_index=True)
+                            st.dataframe(df, width='stretch', hide_index=True)
                     else:
                         st.info("未找到相关实体")
 
@@ -1389,7 +1894,7 @@ def kg_page():
                 height=200
             )
 
-            if st.button("导入到图谱", type="primary", use_container_width=True, key="import_text"):
+            if st.button("导入到图谱", type="primary", width='stretch', key="import_text"):
                 if not doc_input:
                     st.warning("请输入文档内容")
                 else:
@@ -1432,7 +1937,7 @@ def kg_page():
             else:
                 st.warning("文件夹不存在，请创建 `data/kg_docs/` 目录")
 
-            if st.button("从文件夹批量导入", type="primary", use_container_width=True, key="import_folder"):
+            if st.button("从文件夹批量导入", type="primary", width='stretch', key="import_folder"):
                 with st.spinner("正在读取文件并抽取实体..."):
                     try:
                         from src.knowledge_graph import import_from_directory
@@ -1466,7 +1971,7 @@ def kg_page():
                 height=100
             )
 
-            if st.button("执行", use_container_width=True):
+            if st.button("执行", width='stretch'):
                 if cypher_input:
                     with st.spinner("执行中..."):
                         try:
@@ -1478,7 +1983,7 @@ def kg_page():
                             if results:
                                 st.success(f"返回 {len(results)} 条结果")
                                 df = pd.DataFrame(results)
-                                st.dataframe(df, use_container_width=True)
+                                st.dataframe(df, width='stretch')
                             else:
                                 st.info("无结果")
 
@@ -1586,7 +2091,7 @@ def market_page():
         show_rsi = st.checkbox("RSI", value=False)
         
         # 刷新按钮
-        refresh = st.button("刷新数据", type="primary", use_container_width=True)
+        refresh = st.button("刷新数据", type="primary", width='stretch')
     
     # 解析股票代码
     def parse_symbol(code: str) -> tuple:
@@ -1800,7 +2305,7 @@ def market_page():
                         )
                     )
                     
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width='stretch')
                     
                     # 成交量图表
                     if show_volume and 'volume' in df.columns:
@@ -1821,7 +2326,7 @@ def market_page():
                             xaxis=dict(showgrid=True, gridcolor='#f3f4f6'),
                             yaxis=dict(showgrid=True, gridcolor='#f3f4f6')
                         )
-                        st.plotly_chart(fig_vol, use_container_width=True)
+                        st.plotly_chart(fig_vol, width='stretch')
                     
                     # MACD 指标
                     if show_macd and 'close' in df.columns:
@@ -1852,7 +2357,7 @@ def market_page():
                         fig_macd.add_trace(go.Bar(x=df['date'], y=df['macd'], marker_color=colors_macd, name="MACD"), row=3, col=1)
                         
                         fig_macd.update_layout(height=400, showlegend=True, margin=dict(l=10, r=10, t=10, b=10))
-                        st.plotly_chart(fig_macd, use_container_width=True)
+                        st.plotly_chart(fig_macd, width='stretch')
                     
                     # RSI 指标
                     if show_rsi and 'close' in df.columns:
@@ -1879,11 +2384,11 @@ def market_page():
                             height=200, yaxis=dict(range=[0, 100]),
                             margin=dict(l=10, r=10, t=10, b=10)
                         )
-                        st.plotly_chart(fig_rsi, use_container_width=True)
+                        st.plotly_chart(fig_rsi, width='stretch')
                     
                     # 数据表格
                     with st.expander("查看数据详情", expanded=False):
-                        st.dataframe(df.tail(50), use_container_width=True)
+                        st.dataframe(df.tail(50), width='stretch')
                         
                         # 下载数据
                         csv = df.to_csv(index=False)
@@ -1905,6 +2410,351 @@ def market_page():
         st.code(traceback.format_exc())
 
 
+def resset_page():
+    """锐思文本分析数据页面"""
+    st.markdown('<h1 class="main-header">RESSET</h1>', unsafe_allow_html=True)
+
+    if not RESSET_AVAILABLE:
+        st.error("锐思文本分析模块未安装")
+        st.code("pip install https://rtas.resset.com/txtPath/resset-0.9.8-py3-none-any.whl", language="bash")
+        return
+
+    # 检查连接状态
+    available, msg = check_resset_available()
+    if available:
+        st.success(f"✓ {msg}")
+    else:
+        st.warning(f"⚠ {msg}")
+        return
+
+    # 子 Tab 布局
+    tab_cn, tab_gov, tab_us, tab_other = st.tabs([
+        "中国上市公司", "政府工作报告", "美国上市公司", "资讯/研究/股吧"
+    ])
+
+    # ===========================
+    # Tab 1: 中国上市公司财经文本
+    # ===========================
+    with tab_cn:
+        st.markdown("### 中国上市公司财经文本")
+
+        col_cfg, col_result = st.columns([1, 2])
+
+        with col_cfg:
+            st.markdown("#### 查询配置")
+            cn_stock_code = st.text_input("股票代码", value="000002", key="resset_cn_code", help="6位数字，如 000002")
+            cn_data_type = st.selectbox("数据类型", options=CN_REPORT_TYPES, index=0, key="resset_cn_type")
+            cn_year = st.number_input("报告年份", value=2022, min_value=2001, max_value=2026, key="resset_cn_year")
+            cn_content = st.radio("内容类型", ["part（剔除表格图片）", "all（全文）"], index=0, key="resset_cn_content")
+            cn_content_type = "part" if "part" in cn_content else "all"
+
+            if st.button("查询中国上市公司数据", type="primary", key="resset_cn_query"):
+                with st.spinner("正在获取数据..."):
+                    data = get_cn_company_report(
+                        stock_code=cn_stock_code,
+                        data_type=cn_data_type,
+                        year=str(cn_year),
+                        content_type=cn_content_type,
+                    )
+                    st.session_state.resset_cn_data = data
+
+        with col_result:
+            if "resset_cn_data" in st.session_state:
+                data = st.session_state.resset_cn_data
+                if data:
+                    st.success(f"获取到 {len(data)} 条记录")
+                    for i, item in enumerate(data):
+                        title = item.get("title", "")
+                        if isinstance(title, list):
+                            title = title[0] if title else ""
+                        name = item.get("name", "")
+                        if isinstance(name, list):
+                            name = name[0] if name else ""
+                        charnum = item.get("charnum", "")
+                        if isinstance(charnum, list):
+                            charnum = charnum[0] if charnum else ""
+
+                        with st.expander(f"📄 {title} ({name}, {charnum}字)", expanded=(i == 0)):
+                            content = item.get("part_content") or item.get("all_content") or ""
+                            if isinstance(content, list):
+                                content = content[0] if content else ""
+                            if content:
+                                st.text_area("内容", value=content[:5000], height=300, key=f"resset_cn_content_{i}", disabled=True)
+                                if len(content) > 5000:
+                                    st.caption(f"... 内容共 {len(content)} 字，已截断显示")
+                else:
+                    st.info("未查询到数据")
+
+    # ===========================
+    # Tab 2: 政府工作报告
+    # ===========================
+    with tab_gov:
+        st.markdown("### 政府工作报告")
+
+        col_gov_cfg, col_gov_result = st.columns([1, 2])
+
+        with col_gov_cfg:
+            st.markdown("#### 查询配置")
+            gov_region_options = list(REGION_CODES.keys())
+            gov_region_selected = st.selectbox("行政区域", options=gov_region_options, index=0, key="resset_gov_region")
+            gov_region_code = REGION_CODES.get(gov_region_selected, "100100")
+            gov_year = st.number_input("报告年份", value=2022, min_value=1954, max_value=2026, key="resset_gov_year")
+
+            if st.button("查询政府工作报告", type="primary", key="resset_gov_query"):
+                with st.spinner("正在获取数据..."):
+                    data = get_government_report(region_code=gov_region_code, year=str(gov_year))
+                    st.session_state.resset_gov_data = data
+
+        with col_gov_result:
+            if "resset_gov_data" in st.session_state:
+                data = st.session_state.resset_gov_data
+                if data:
+                    st.success(f"获取到 {len(data)} 条记录")
+                    for i, item in enumerate(data):
+                        title = item.get("title", "")
+                        if isinstance(title, list):
+                            title = title[0] if title else ""
+                        with st.expander(f"📄 {title}", expanded=(i == 0)):
+                            content = item.get("part_content") or item.get("all_content") or ""
+                            if isinstance(content, list):
+                                content = content[0] if content else ""
+                            if content:
+                                st.text_area("内容", value=content[:5000], height=300, key=f"resset_gov_content_{i}", disabled=True)
+                                if len(content) > 5000:
+                                    st.caption(f"... 内容共 {len(content)} 字，已截断显示")
+                else:
+                    st.info("未查询到数据")
+
+    # ===========================
+    # Tab 3: 美国上市公司
+    # ===========================
+    with tab_us:
+        st.markdown("### 美国上市公司财经文本")
+
+        col_us_cfg, col_us_result = st.columns([1, 2])
+
+        with col_us_cfg:
+            st.markdown("#### 查询配置")
+            us_stock_code = st.text_input("美股代码", value="AMZN", key="resset_us_code", help="如 AMZN, AAPL, MSFT")
+            us_data_type = st.selectbox("数据类型", options=US_REPORT_TYPES, index=0, key="resset_us_type",
+                                        format_func=lambda x: {"10K": "10K - 年报", "10Q": "10Q - 季报", "424B": "424B - 招股说明书"}.get(x, x))
+            us_year = st.number_input("报告年份", value=2022, min_value=1987, max_value=2026, key="resset_us_year")
+
+            if st.button("查询美国上市公司数据", type="primary", key="resset_us_query"):
+                with st.spinner("正在获取数据..."):
+                    data = get_us_company_report(
+                        stock_code=us_stock_code,
+                        data_type=us_data_type,
+                        year=str(us_year),
+                    )
+                    st.session_state.resset_us_data = data
+
+        with col_us_result:
+            if "resset_us_data" in st.session_state:
+                data = st.session_state.resset_us_data
+                if data:
+                    st.success(f"获取到 {len(data)} 条记录")
+                    for i, item in enumerate(data):
+                        title = item.get("title", "")
+                        if isinstance(title, list):
+                            title = title[0] if title else ""
+                        with st.expander(f"📄 {title}", expanded=(i == 0)):
+                            content = item.get("part_content") or item.get("all_content") or ""
+                            if isinstance(content, list):
+                                content = content[0] if content else ""
+                            if content:
+                                st.text_area("内容", value=content[:5000], height=300, key=f"resset_us_content_{i}", disabled=True)
+                else:
+                    st.info("未查询到数据")
+
+    # ===========================
+    # Tab 4: 资讯/研究/股吧/房产
+    # ===========================
+    with tab_other:
+        st.markdown("### 资讯 / 研究报告 / 股吧 / 房产")
+
+        sub_tab_news, sub_tab_research, sub_tab_forum, sub_tab_realestate = st.tabs([
+            "财经资讯", "研究报告", "股吧评论", "房产信息"
+        ])
+
+        with sub_tab_news:
+            news_year = st.number_input("年份", value=2022, min_value=2017, max_value=2023, key="resset_news_year")
+            if st.button("查询财经资讯", type="primary", key="resset_news_query"):
+                with st.spinner("正在获取数据..."):
+                    data = get_financial_news(year=str(news_year))
+                    st.session_state.resset_news_data = data
+
+            if "resset_news_data" in st.session_state:
+                data = st.session_state.resset_news_data
+                if data:
+                    st.success(f"获取到 {len(data)} 条记录")
+                    for i, item in enumerate(data[:10]):
+                        title = item.get("title", "")
+                        if isinstance(title, list):
+                            title = title[0] if title else ""
+                        with st.expander(f"📰 {title}", expanded=False):
+                            content = item.get("part_content") or ""
+                            if isinstance(content, list):
+                                content = content[0] if content else ""
+                            if content:
+                                st.text(content[:3000])
+                else:
+                    st.info("未查询到数据")
+
+        with sub_tab_research:
+            res_type = st.selectbox("研究类型", options=RESEARCH_TYPES, index=3, key="resset_res_type")
+            res_year = st.number_input("年份", value=2022, min_value=2017, max_value=2023, key="resset_res_year")
+            if st.button("查询研究报告", type="primary", key="resset_res_query"):
+                with st.spinner("正在获取数据..."):
+                    data = get_research_report(data_type=res_type, year=str(res_year))
+                    st.session_state.resset_res_data = data
+
+            if "resset_res_data" in st.session_state:
+                data = st.session_state.resset_res_data
+                if data:
+                    st.success(f"获取到 {len(data)} 条记录")
+                    for i, item in enumerate(data[:10]):
+                        info_title = item.get("InfoTitle") or item.get("title", "")
+                        if isinstance(info_title, list):
+                            info_title = info_title[0] if info_title else ""
+                        with st.expander(f"📊 {info_title}", expanded=False):
+                            content = item.get("Content") or item.get("part_content") or ""
+                            if isinstance(content, list):
+                                content = content[0] if content else ""
+                            if content:
+                                st.text(content[:3000])
+                else:
+                    st.info("未查询到数据")
+
+        with sub_tab_forum:
+            forum_type = st.selectbox("数据源", options=FORUM_TYPES, index=0, key="resset_forum_type")
+            forum_year = st.number_input("年份", value=2022, min_value=2000, max_value=2023, key="resset_forum_year")
+            forum_max = st.slider("最大获取条数", value=10, min_value=1, max_value=50, key="resset_forum_max")
+            if st.button("查询股吧评论", type="primary", key="resset_forum_query"):
+                with st.spinner("正在获取数据（两步获取，可能需要较长时间）..."):
+                    data = get_forum_posts(data_type=forum_type, year=str(forum_year), max_items=forum_max)
+                    st.session_state.resset_forum_data = data
+
+            if "resset_forum_data" in st.session_state:
+                data = st.session_state.resset_forum_data
+                if data:
+                    st.success(f"获取到 {len(data)} 条记录")
+                    import pandas as pd
+                    rows = []
+                    for item in data[:50]:
+                        t = item.get("title", "")
+                        if isinstance(t, list):
+                            t = t[0] if t else ""
+                        rows.append({
+                            "标题": t,
+                            "发布时间": str(item.get("release_time", ""))[:10],
+                            "阅读量": item.get("Reading_volume", item.get("hits", "")),
+                            "评论数": item.get("Reply_num", ""),
+                        })
+                    if rows:
+                        st.dataframe(pd.DataFrame(rows), use_container_width=True)
+                else:
+                    st.info("未查询到数据")
+
+        with sub_tab_realestate:
+            estate_type = st.selectbox("数据类型", options=REAL_ESTATE_TYPES, index=8, key="resset_estate_type")
+            estate_year = st.number_input("年份", value=2022, min_value=2017, max_value=2023, key="resset_estate_year")
+            if st.button("查询房产信息", type="primary", key="resset_estate_query"):
+                with st.spinner("正在获取数据..."):
+                    data = get_real_estate_info(data_type=estate_type, year=str(estate_year))
+                    st.session_state.resset_estate_data = data
+
+            if "resset_estate_data" in st.session_state:
+                data = st.session_state.resset_estate_data
+                if data:
+                    st.success(f"获取到 {len(data)} 条记录")
+                    for i, item in enumerate(data[:10]):
+                        title = item.get("title", "")
+                        with st.expander(f"🏠 {title}", expanded=False):
+                            col_a, col_b = st.columns(2)
+                            col_a.metric("起拍价", f"¥{item.get('starting_price', 'N/A')}")
+                            col_b.metric("评估价", f"¥{item.get('valuation_price', 'N/A')}")
+                            st.caption(f"位置: {item.get('location', 'N/A')} | 状态: {item.get('auction_status', 'N/A')}")
+                            content = item.get("announcement") or ""
+                            if content:
+                                st.text(content[:2000])
+                else:
+                    st.info("未查询到数据")
+
+    # 底部信息
+    with st.expander("📖 锐思文本分析 API 使用说明", expanded=False):
+        st.markdown("""
+        ### 支持的数据类型
+        | 类型 | 数据 | 年份范围 |
+        |------|------|---------|
+        | 中国上市公司 | 年度报告、季度报告、问询函、招股说明书等 | 2001-至今 |
+        | 政府工作报告 | 国务院、各省市政府工作报告 | 1954-至今 |
+        | 美国上市公司 | 10K年报、10Q季报、424B招股说明书 | 1987-至今 |
+        | 财经资讯 | 新闻资讯 | 2017-2023 |
+        | 研究报告 | 宏观分析、行业分析、公司研究等 | 2017-2023 |
+        | 股吧评论 | 东方财富、雪球 | 2000-2023 |
+        | 房产信息 | 各平台拍卖公告 | 2017-2023 |
+
+        ### 在 CHAT 页面使用
+        直接输入包含关键词的问题（如"帮我查看万科2022年年报"），系统会自动触发锐思数据获取。
+
+        大模型也可以自主判断是否需要调用锐思 API —— 当它认为问题需要上述文本数据时，会自动发起调用。
+        """)
+
+    # ===========================
+    # 数据填充 RAG 知识库
+    # ===========================
+    st.divider()
+    st.markdown("### 将锐思数据填充到 RAG 知识库")
+    st.caption("从锐思 API 获取文本数据并注入到向量数据库，使 RAG 检索可以检索到这些数据")
+
+    ingest_col1, ingest_col2 = st.columns([1, 2])
+
+    with ingest_col1:
+        ingest_type = st.selectbox("数据类型", options=[
+            "cn_report", "gov_report", "us_report",
+            "financial_news", "research", "forum", "real_estate"
+        ], format_func=lambda x: {
+            "cn_report": "中国上市公司报告",
+            "gov_report": "政府工作报告",
+            "us_report": "美国上市公司报告",
+            "financial_news": "财经新闻资讯",
+            "research": "研究报告",
+            "forum": "股吧评论",
+            "real_estate": "房产拍卖信息",
+        }.get(x, x), key="resset_ingest_type")
+
+        ingest_code = st.text_input("股票/区域代码", value="000002", key="resset_ingest_code",
+                                     help="中国上市公司: 6位股票代码; 政府: 区域代码; 美国: 英文代码")
+        ingest_subtype = st.text_input("报告子类型", value="年度报告", key="resset_ingest_subtype",
+                                        help="如: 年度报告, 10K, 行业分析, 东方财富 等")
+        ingest_year = st.number_input("年份", value=2023, min_value=2000, max_value=2026, key="resset_ingest_year")
+
+        if st.button("填充到 RAG 知识库", type="primary", key="resset_ingest_btn"):
+            with st.spinner("正在获取数据并注入 RAG 知识库..."):
+                try:
+                    from src.rag import ingest_resset_data_to_rag
+                    result = ingest_resset_data_to_rag(
+                        data_type=ingest_type,
+                        stock_code=ingest_code,
+                        report_type=ingest_subtype,
+                        year=str(ingest_year),
+                        region_code=ingest_code if ingest_type == "gov_report" else "100100",
+                    )
+                    st.session_state.resset_ingest_result = result
+                except Exception as e:
+                    st.error(f"填充失败: {e}")
+
+    with ingest_col2:
+        if "resset_ingest_result" in st.session_state:
+            result = st.session_state.resset_ingest_result
+            if result.get("success"):
+                st.success(f"✓ 成功注入 {result['documents_ingested']} 条文档到 RAG 知识库")
+                st.info(f"标签: {result['label']} | 获取数据: {result['total_data_fetched']} 条")
+            else:
+                st.error(f"填充失败: {result.get('error', 'Unknown')}")
+
+
 def main():
     init_session_state()
 
@@ -1912,6 +2762,7 @@ def main():
         st.Page(chat_page, title="CHAT"),
         st.Page(market_page, title="MARKET"),
         st.Page(kg_page, title="KG"),
+        st.Page(resset_page, title="RESSET"),
         st.Page(quant_page, title="QUANT"),
         st.Page(evaluation_page, title="EVAL"),
     ])

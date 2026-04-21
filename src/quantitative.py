@@ -30,9 +30,11 @@ DEFAULT_COMMISSION = 0.0003
 
 # 预定义策略模板
 STRATEGY_TEMPLATES = {
+    # === 规则策略 ===
     "dual_ma": {
         "name": "双均线策略",
         "description": "金叉买入，死叉卖出",
+        "category": "rule",
         "params": {
             "fast_window": {"type": "int", "default": 10, "min": 2, "max": 50},
             "slow_window": {"type": "int", "default": 30, "min": 5, "max": 200}
@@ -41,6 +43,7 @@ STRATEGY_TEMPLATES = {
     "rsi": {
         "name": "RSI 策略",
         "description": "RSI 超卖买入，超买卖出",
+        "category": "rule",
         "params": {
             "rsi_period": {"type": "int", "default": 14, "min": 5, "max": 30},
             "oversold": {"type": "int", "default": 30, "min": 10, "max": 40},
@@ -50,6 +53,7 @@ STRATEGY_TEMPLATES = {
     "macd": {
         "name": "MACD 策略",
         "description": "MACD 金叉死叉信号",
+        "category": "rule",
         "params": {
             "fast_period": {"type": "int", "default": 12, "min": 5, "max": 30},
             "slow_period": {"type": "int", "default": 26, "min": 15, "max": 50},
@@ -59,19 +63,104 @@ STRATEGY_TEMPLATES = {
     "bollinger": {
         "name": "布林带策略",
         "description": "价格触及下轨买入，上轨卖出",
+        "category": "rule",
         "params": {
             "window": {"type": "int", "default": 20, "min": 10, "max": 50},
             "num_std": {"type": "float", "default": 2.0, "min": 1.0, "max": 3.0}
         }
-    }
+    },
+    # === ML 策略 ===
+    "ml_logistic": {
+        "name": "逻辑回归 Walk-forward",
+        "description": "使用逻辑回归预测涨跌，Walk-forward 滚动训练",
+        "category": "ml",
+        "params": {
+            "train_window": {"type": "int", "default": 50, "min": 20, "max": 500},
+            "test_window": {"type": "int", "default": 20, "min": 5, "max": 100},
+            "rolling_step": {"type": "int", "default": 10, "min": 1, "max": 50},
+            "feature_config": {"type": "select", "default": "basic", "options": ["basic", "technical", "extended"]},
+        }
+    },
+    "ml_xgboost": {
+        "name": "XGBoost Walk-forward",
+        "description": "使用 XGBoost 预测涨跌，支持特征重要性",
+        "category": "ml",
+        "params": {
+            "train_window": {"type": "int", "default": 50, "min": 20, "max": 500},
+            "test_window": {"type": "int", "default": 20, "min": 5, "max": 100},
+            "rolling_step": {"type": "int", "default": 10, "min": 1, "max": 50},
+            "feature_config": {"type": "select", "default": "technical", "options": ["basic", "technical", "extended"]},
+            "max_depth": {"type": "int", "default": 5, "min": 2, "max": 10},
+            "n_estimators": {"type": "int", "default": 100, "min": 10, "max": 500},
+        }
+    },
+    "ml_lightgbm": {
+        "name": "LightGBM Walk-forward",
+        "description": "使用 LightGBM 预测涨跌，速度快适合大数据集",
+        "category": "ml",
+        "params": {
+            "train_window": {"type": "int", "default": 50, "min": 20, "max": 500},
+            "test_window": {"type": "int", "default": 20, "min": 5, "max": 100},
+            "rolling_step": {"type": "int", "default": 10, "min": 1, "max": 50},
+            "feature_config": {"type": "select", "default": "technical", "options": ["basic", "technical", "extended"]},
+            "num_leaves": {"type": "int", "default": 31, "min": 10, "max": 100},
+            "n_estimators": {"type": "int", "default": 100, "min": 10, "max": 500},
+        }
+    },
+    "ml_random_forest": {
+        "name": "随机森林 Walk-forward",
+        "description": "使用随机森林预测涨跌，鲁棒性强",
+        "category": "ml",
+        "params": {
+            "train_window": {"type": "int", "default": 50, "min": 20, "max": 500},
+            "test_window": {"type": "int", "default": 20, "min": 5, "max": 100},
+            "rolling_step": {"type": "int", "default": 10, "min": 1, "max": 50},
+            "feature_config": {"type": "select", "default": "basic", "options": ["basic", "technical", "extended"]},
+            "n_estimators": {"type": "int", "default": 100, "min": 10, "max": 500},
+        }
+    },
+    "ml_lstm": {
+        "name": "LSTM 深度学习策略",
+        "description": "使用 PyTorch LSTM 进行序列预测",
+        "category": "ml",
+        "params": {
+            "train_window": {"type": "int", "default": 50, "min": 20, "max": 500},
+            "test_window": {"type": "int", "default": 20, "min": 5, "max": 100},
+            "rolling_step": {"type": "int", "default": 10, "min": 1, "max": 50},
+            "feature_config": {"type": "select", "default": "basic", "options": ["basic", "technical", "extended"]},
+            "hidden_dim": {"type": "int", "default": 32, "min": 8, "max": 256},
+            "num_layers": {"type": "int", "default": 2, "min": 1, "max": 4},
+            "epochs": {"type": "int", "default": 20, "min": 5, "max": 100},
+            "lr": {"type": "float", "default": 0.001, "min": 0.0001, "max": 0.01},
+        }
+    },
 }
 
 
 def get_available_strategies() -> List[Dict]:
     """获取可用的策略模板列表"""
     return [
+        {"id": k, "name": v["name"], "description": v["description"],
+         "category": v.get("category", "rule")}
+        for k, v in STRATEGY_TEMPLATES.items()
+    ]
+
+
+def get_available_rule_strategies() -> List[Dict]:
+    """获取规则策略模板列表"""
+    return [
         {"id": k, "name": v["name"], "description": v["description"]}
         for k, v in STRATEGY_TEMPLATES.items()
+        if v.get("category", "rule") == "rule"
+    ]
+
+
+def get_available_ml_strategies() -> List[Dict]:
+    """获取 ML 策略模板列表"""
+    return [
+        {"id": k, "name": v["name"], "description": v["description"]}
+        for k, v in STRATEGY_TEMPLATES.items()
+        if v.get("category", "rule") == "ml"
     ]
 
 
@@ -92,12 +181,17 @@ def create_strategy_instance(strategy_type: str, params: Dict) -> Any:
     根据策略类型和参数创建策略实例
     
     Args:
-        strategy_type: 策略类型 (dual_ma, rsi, macd, bollinger)
+        strategy_type: 策略类型 (dual_ma, rsi, macd, bollinger, ml_*)
         params: 策略参数
         
     Returns:
         Strategy 类
     """
+    # ML 策略走专用工厂
+    template = STRATEGY_TEMPLATES.get(strategy_type, {})
+    if template.get("category") == "ml":
+        return create_ml_strategy_instance(strategy_type, params)
+    
     from akquant import Strategy
     import numpy as np
     
@@ -266,6 +360,21 @@ def create_strategy_instance(strategy_type: str, params: Dict) -> Any:
         raise ValueError(f"未知策略类型: {strategy_type}")
 
 
+def create_ml_strategy_instance(strategy_type: str, params: Dict) -> Any:
+    """
+    根据 ML 策略类型和参数创建策略类（委托给 ml_strategy 模块）
+
+    Args:
+        strategy_type: ML 策略类型 (ml_logistic, ml_xgboost, etc.)
+        params: 策略参数
+
+    Returns:
+        Strategy 类
+    """
+    from src.ml_strategy import create_ml_strategy_instance as _create_ml
+    return _create_ml(strategy_type, params)
+
+
 def run_backtest(
     data,
     strategy_type: str,
@@ -276,10 +385,13 @@ def run_backtest(
     initial_cash: float = DEFAULT_INITIAL_CASH,
     commission_rate: float = DEFAULT_COMMISSION,
     benchmark_data: Any = None,
-    on_event: Any = None
+    on_event: Any = None,
+    ml_config: Dict = None,
+    checkpoint_path: str = None,
+    save_checkpoint: str = None,
 ) -> Dict[str, Any]:
     """
-    运行回测（支持基准对比 + 流式事件）
+    运行回测（支持基准对比 + 流式事件 + ML + 热启动）
     
     Args:
         data: DataFrame，包含 date, open, high, low, close, volume, symbol 列
@@ -292,6 +404,9 @@ def run_backtest(
         commission_rate: 佣金费率
         benchmark_data: 基准收益序列（Series），用于基准对比
         on_event: 流式回测回调函数
+        ml_config: ML 特有配置（Walk-forward 参数覆盖）
+        checkpoint_path: 热启动：从快照恢复路径
+        save_checkpoint: 热启动：回测后保存快照的名称
         
     Returns:
         回测结果字典
@@ -320,7 +435,8 @@ def run_backtest(
             "commission_rate": commission_rate,
             "show_progress": False,
             "start_time": start_date,
-            "end_time": end_date
+            "end_time": end_date,
+            "strict_strategy_params": False
         }
         
         # 添加基准对比（如果提供）
@@ -479,7 +595,7 @@ def generate_report(
             
         # 生成报告
         if output_path is None:
-            output_path = f"quant_report_{strategy_name}_{datetime.now().strftime('%Y%m%d_%H%M')}.html"
+            output_path = f"reports/quant_report_{strategy_name}_{datetime.now().strftime('%Y%m%d_%H%M')}.html"
         
         # 准备报告参数
         report_kwargs = {
@@ -615,7 +731,13 @@ def parse_natural_language_strategy(user_input: str) -> Optional[Dict]:
 QUANT_TRIGGER_KEYWORDS = [
     "量化", "回测", "策略", "交易策略", "均线", "macd", "rsi", "布林带",
     "金叉", "死叉", "买入", "卖出", "交易", "收益率", "夏普比率", "回测",
-    "backtest", "strategy", "quantitative"
+    "backtest", "strategy", "quantitative",
+    # ML / 热启动 / 多策略
+    "机器学习", "训练模型", "滚动训练", "walk_forward", "walkforward",
+    "热启动", "快照恢复", "checkpoint", "warm_start", "warmstart",
+    "多策略", "模拟盘", "组合策略", "slot",
+    "xgboost", "lightgbm", "randomforest", "lstm", "transformer",
+    "特征工程", "pipeline", "交叉验证", "过拟合", "深度学习",
 ]
 
 

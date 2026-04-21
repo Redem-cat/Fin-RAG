@@ -4,6 +4,8 @@
 
 该系统不仅支持客户与员工的自然语言问答，而且深入融合了投资建议生成与合规风险自动校验，实现智能服务 + 自动合规审查一体化。
 
+> **📌 关于 AKQuant 框架**：本项目基于 [AKQuant](https://github.com/Redem-cat/Fin-RAG) 开源框架进行二次开发。AKQuant 采用 **MIT 协议**，允许自由使用、修改和分发。详细协议内容请参阅 [`akquant-main/LICENSE`](./akquant-main/LICENSE)。
+
 ![RAG architecture](./img/RAG_Elasticsearch.png)
 
 ## 核心特性
@@ -30,6 +32,17 @@
 - PDF 布局识别 (pdfplumber)
 - 表格结构识别与还原
 - 层级感知动态分块算法
+
+### 锐思文本分析集成
+- **LLM 自主决策调用**：大模型根据用户问题自主判断是否需要调用锐思 API
+- **关键词触发**：同时支持关键词自动触发机制
+- **7 类文本数据**：中国上市公司报告、政府工作报告、美国上市公司报告、财经资讯、研究报告、股吧评论、房产拍卖
+- **RAG 知识库填充**：支持将锐思获取的文本数据直接注入向量数据库
+
+### ML 量化策略
+- **Walk-forward 滚动训练**：支持逻辑回归、XGBoost、LightGBM、随机森林、LSTM
+- **热启动快照**：回测状态保存与恢复，支持增量回测
+- **多策略模拟盘**：多 slot 策略配置、组合回测、跨策略风控指标
 
 ### 系统化评估
 - RAGAS 框架评估
@@ -64,274 +77,195 @@ ollama pull my-qwen25
 
 > **注意**：首次拉取模型需要下载较大文件，请确保网络稳定。
 
-#### 验证模型安装
-
-```bash
-# 查看已安装的模型
-ollama list
-```
-
----
-
 ### 2. 安装并启动 Elasticsearch
 
-本项目使用 Docker 运行 Elasticsearch。
-
-#### 方式一：使用 Docker Compose（推荐）
-
 ```bash
-# 创建 docker-compose.yml 文件
-cat > docker-compose.yml << 'EOF'
-version: '3.8'
-services:
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
-    container_name: es-langchain
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-    ports:
-      - "9200:9200"
-      - "9300:9300"
-    volumes:
-      - es-data:/usr/share/elasticsearch/data
-    restart: unless-stopped
-
-volumes:
-  es-data:
-    driver: local
-EOF
-
-# 启动 Elasticsearch
-docker-compose up -d
-```
-
-#### 方式二：直接使用 Docker
-
-```bash
-# 拉取并启动 Elasticsearch
 docker run -d \
-  --name es-langchain \
-  -p 9200:9200 \
-  -p 9300:9300 \
-  -e discovery.type=single-node \
-  -e xpack.security.enabled=false \
-  -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
-  -v es-data:/usr/share/elasticsearch/data \
-  docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    --name es-langchain \
+    -p 9200:9200 -p 9300:9300 \
+    -e discovery.type=single-node \
+    -e xpack.security.enabled=false \
+    -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
+    -v es-data:/usr/share/elasticsearch/data \
+    docker.elastic.co/elasticsearch/elasticsearch:8.11.0
 ```
 
-#### 验证 Elasticsearch 启动
+### 3. 安装并启动 Neo4j（可选）
 
 ```bash
-# 等待约 30 秒后检查
-curl http://localhost:9200
-```
-
-正常启动后会返回类似以下 JSON：
-
-```json
-{
-  "name" : "...",
-  "cluster_name" : "docker-cluster",
-  "cluster_uuid" : "...",
-  "version" : {
-    "number" : "8.11.0"
-  },
-  "tagline" : "You Know, for Search"
-}
-```
-
-#### 启动/停止 Elasticsearch
-
-```bash
-# 停止
-docker stop es-langchain
-
-# 启动
-docker start es-langchain
-
-# 查看日志
-docker logs -f es-langchain
-```
-
----
-
-### 3. 安装并启动 Neo4j（知识图谱，可选）
-
-知识图谱功能需要 Neo4j 数据库。
-
-#### 使用 Docker 启动
-
-```bash
-# 拉取并启动 Neo4j
 docker run -d \
-  --name neo4j-langchain \
-  -p 7474:7474 \
-  -p 7687:7687 \
-  -e NEO4J_AUTH=neo4j/password \
-  -e NEO4J_PLUGINS='["apoc"]' \
-  neo4j:5.15-community
+    --name neo4j-langchain \
+    -p 7474:7474 -p 7687:7687 \
+    -e NEO4J_AUTH=neo4j/password \
+    -e NEO4J_PLUGINS='["apoc"]' \
+    neo4j:5.15-community
 ```
-
-#### 验证 Neo4j 启动
-
-```bash
-# 访问 http://localhost:7474
-# 使用用户名: neo4j，密码: password 登录
-```
-
-> **注意**：如果不需要知识图谱功能，可以跳过此步骤。
-
----
 
 ### 4. 配置环境变量
 
-创建 `.env` 文件配置必要的环境变量：
+创建 `.env` 文件：
 
 ```bash
-# 创建 .env 文件
-cat > .env << 'EOF'
-# ===========================================
-# LLM 配置（必填）
-# ===========================================
 OLLAMA_BASE_URL=http://localhost:11434
 EMBEDDING_MODEL=my-bge-m3
 CHAT_MODEL=my-qwen25
-
-# ===========================================
-# Elasticsearch 配置
-# ===========================================
 ES_LOCAL_URL=http://localhost:9200
-
-# ===========================================
-# Neo4j 配置（可选）
-# ===========================================
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USERNAME=neo4j
 NEO4J_PASSWORD=password
-
-# ===========================================
-# 其他配置
-# ===========================================
-RAG_SYSTEM_NAME=FinRAG-Advisor
-ES_INDEX_NAME=financial_docs
-EOF
 ```
 
----
-
-### 5. 构建并安装 AKQuant（必选）
-
-AKQuant 是项目的核心量化框架，需要从源码构建：
+### 5. 安装依赖
 
 ```bash
-# 进入 AKQuant 目录
-cd akquant-main
-
-# 使用 uv 构建并安装（推荐，比 pip 快）
-uv pip install -e .
-
-# 或者使用 pip
-pip install -e .
+pip install -r requirements.txt
+pip install https://rtas.resset.com/txtPath/resset-0.9.8-py3-none-any.whl  # 锐思文本分析（可选）
 ```
 
-> **注意**：构建 AKQuant 需要 Rust 工具链。如果没有安装，请先安装 [rustup](https://rustup.rs/)。
-
-#### 验证安装
-
-```python
-import akquant
-print(akquant.__version__)  # 应该输出 0.2.2
-```
-
-### 6. 构建并安装 AKQuant（必选）
-
-AKQuant 是项目的核心量化框架，需要从源码构建：
+### 6. 安装 AKQuant 量化框架
 
 ```bash
-# 进入 AKQuant 目录
 cd akquant-main
-
-# 使用 uv 构建并安装（推荐，比 pip 快）
-uv pip install -e .
-
-# 或者使用 pip
 pip install -e .
 ```
-
-> **注意**：构建 AKQuant 需要 Rust 工具链。如果没有安装，请先安装 [rustup](https://rustup.rs/)。
-
-#### 验证安装
-
-```python
-import akquant
-print(akquant.__version__)  # 应该输出 0.2.2
-```
-
----
-
-#### 主要依赖说明
-
-| 依赖包 | 用途 |
-|--------|------|
-| `langchain`, `langchain-ollama` | LLM 和 Embedding 集成 |
-| `langchain-elasticsearch` | 向量数据库连接 |
-| `elasticsearch` | Elasticsearch 客户端 |
-| `sentence-transformers` | 文本向量化 |
-| `akshare` | 金融数据获取 |
-| `neo4j` | 知识图谱数据库 |
-| `streamlit` | Web 界面框架 |
-| `plotly` | 图表可视化 |
-| `ragas` | RAG 评估框架 |
-| `pandas` | 数据处理 |
 
 ---
 
 ## 快速开始
 
-### 启动流程图
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        启动流程                                  │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  1. 启动 Ollama 服务                                             │
-│     └─> ollama serve                                             │
-│                                                                 │
-│  2. 启动 Elasticsearch (Docker)                                  │
-│     └─> docker start es-langchain                               │
-│                                                                 │
-│  3. 启动 Neo4j (Docker，可选)                                      │
-│     └─> docker start neo4j-langchain                            │
-│                                                                 │
-│  4. 启动 Web 界面                                                 │
-│     └─> streamlit run src/streamlit_app.py                      │
-│                                                                 │
-│  5. 访问 http://localhost:8501                                   │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### 详细步骤
+### 方式一：一键启动（推荐）
 
 ```bash
-# 1. 启动 Ollama 后台服务
-ollama serve
-
-# 2. 启动 Elasticsearch
-docker start es-langchain
-
-# 3. (可选) 启动 Neo4j
-docker start neo4j-langchain
-
-# 4. 启动 Web 界面
-streamlit run src/streamlit_app.py
+# Windows 双击运行或在终端执行：
+start.bat
 ```
 
-访问 `http://localhost:8501` 即可使用。
+启动脚本会自动完成以下操作：
+
+```
+[0/5] 检查 .env 环境配置
+[1/5] 检查 Ollama 服务 → 未运行则自动启动
+[2/5] 检查 Elasticsearch → 未运行则自动启动/创建容器
+[3/5] 检查 Neo4j (可选) → 未运行则自动启动
+[4/5] 清理 Python 缓存 (__pycache__)
+[5/5] 启动 Streamlit → 访问 http://localhost:8501
+```
+
+### 方式二：手动启动
+
+```bash
+ollama serve                   # 1. 启动 Ollama
+docker start es-langchain      # 2. 启动 Elasticsearch
+docker start neo4j-langchain   # 3. (可选) 启动 Neo4j
+streamlit run src/streamlit_app.py  # 4. 启动 Web 界面
+```
+
+> **提示**：遇到 `KeyError: 'src.rag'` 导入错误时，删除 `src/__pycache__` 目录后重试。
+
+---
+
+## 系统架构
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                           FinRAG-Advisor 系统架构                        │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │                      用户界面层 (Streamlit 6 页)                    │  │
+│  │  ┌────────┐ ┌────────┐ ┌──────┐ ┌────────┐ ┌──────┐ ┌──────┐    │  │
+│  │  │  CHAT  │ │ MARKET │ │  KG  │ │ RESSET │ │ QUANT │ │ EVAL │    │  │
+│  │  │ 智能问答│ │ 行情数据│ │知识图谱│ │文本分析 │ │量化回测│ │ 评估 │    │  │
+│  │  └────────┘ └────────┘ └──────┘ └────────┘ └──────┘ └──────┘    │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                    │                                    │
+│  ┌─────────────────────────────────┴─────────────────────────────────┐  │
+│  │                  业务逻辑层 (LangChain / LangGraph)                 │  │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐             │  │
+│  │  │ 意图分类 │ │ RAG 检索  │ │ 合规审查  │ │ 触发系统  │             │  │
+│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘             │  │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐             │  │
+│  │  │ ML 策略  │ │ 多策略   │ │ 快照管理  │ │ 锐思API  │             │  │
+│  │  │ Walk-Fwd │ │ 模拟盘   │ │ 热启动   │ │ LLM调用  │             │  │
+│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘             │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│          │                    │                    │                     │
+│  ┌───────┴────────────────────┴────────────────────┴───────────┐       │
+│  │                          数据层                              │       │
+│  │  ┌─────────────┐  ┌─────────┐  ┌─────────┐  ┌──────────┐   │       │
+│  │  │Elasticsearch│  │  Neo4j  │  │ AKShare │  │  RESSET  │   │       │
+│  │  │  向量存储    │  │ 知识图谱 │  │ 金融数据 │  │ 文本分析  │   │       │
+│  │  └─────────────┘  └─────────┘  └─────────┘  └──────────┘   │       │
+│  └─────────────────────────────────────────────────────────────┘       │
+│                                    │                                     │
+│  ┌─────────────────────────────────┴─────────────────────────────┐     │
+│  │                       模型层 (Ollama 本地)                      │     │
+│  │  ┌──────────────────┐    ┌──────────────────┐                 │     │
+│  │  │   my-bge-m3      │    │   my-qwen25      │                 │     │
+│  │  │   (Embedding)    │    │   (对话生成)      │                 │     │
+│  │  └──────────────────┘    └──────────────────┘                 │     │
+│  └─────────────────────────────────────────────────────────────┘     │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 功能模块详解
+
+### CHAT - 智能问答
+
+基于 RAG 的智能对话，支持多种数据来源自动补充：
+
+| 触发方式 | 数据来源 | 说明 |
+|---------|---------|------|
+| 关键词匹配 | 金融数据 (AKShare) | 股价、基金、经济指标等实时数据 |
+| 关键词 + LLM 决策 | 锐思文本分析 (RESSET) | 年报、政府报告、研报、股评等 |
+| 关键词匹配 | ML 策略信息 | 机器学习策略说明、热启动快照 |
+| 知识图谱 | Neo4j | 公司关系、行业图谱检索 |
+
+**LLM 自主决策调用锐思 API**：
+当用户提问涉及年报、政府报告、研报等内容时，大模型会自动判断并调用锐思 API 获取数据。例如：
+- "帮我看看万科2023年的年报" → 自动获取万科A年度报告
+- "国务院2023年政府工作报告说了什么" → 自动获取政府工作报告
+- "亚马逊的10K报告" → 自动获取美股10-K报告
+
+### MARKET - 行情数据
+
+- K线图、均线、MACD、RSI 等技术指标可视化
+- 支持 AKShare 实时股票数据
+
+### KG - 知识图谱
+
+- Neo4j 图数据库可视化
+- 公司-人员-行业关系查询
+- 多跳推理
+
+### RESSET - 锐思文本分析
+
+| 子功能 | 说明 |
+|--------|------|
+| 中国上市公司 | 年度报告、季度报告、问询函、招股说明书等 13 种类型 |
+| 政府工作报告 | 国务院、31个省市区的政府工作报告 |
+| 美国上市公司 | 10K年报、10Q季报、424B招股说明书 |
+| 资讯/研究/股吧 | 财经新闻、研究报告、东方财富/雪球股评、房产拍卖 |
+| **RAG 知识库填充** | 将锐思获取的文本数据注入 Elasticsearch 向量数据库 |
+
+### QUANT - 量化回测
+
+| 子功能 | 说明 |
+|--------|------|
+| 规则策略 | 双均线、RSI、MACD、布林带 |
+| ML 策略 | 逻辑回归、XGBoost、LightGBM、随机森林、LSTM |
+| Walk-forward | 滚动训练窗口，支持特征工程配置 |
+| 快照管理 | 回测状态保存、热启动恢复 |
+| 多策略模拟盘 | 多 slot 策略组合、跨策略风控指标 |
+| 基准对比 | 支持与市场基准收益率对比 |
+
+### EVAL - RAG 评估
+
+- RAGAS 框架评估：Faithfulness、Context Precision、Answer Relevance
+- 可视化仪表盘展示
 
 ---
 
@@ -340,89 +274,36 @@ streamlit run src/streamlit_app.py
 ```
 langchain-ollama-elasticsearch/
 │
-├── data/                    # 文档目录
-│   ├── 01_金融法规/          # 金融法规文档
-│   └── ...
+├── data/                       # 文档目录（金融法规等 .md 文件）
+├── src/                        # 源代码目录
+│   ├── __init__.py             # 包初始化
+│   ├── streamlit_app.py        # Streamlit 主应用（6 页面）
+│   ├── rag.py                  # RAG 检索与生成 + 锐思工具调用 + 数据填充
+│   ├── knowledge_graph.py      # 知识图谱 (Neo4j)
+│   ├── intent_classifier.py    # 意图分类
+│   ├── quantitative.py         # 量化回测引擎（规则策略）
+│   ├── ml_strategy.py          # ML 策略工厂（Walk-forward）
+│   ├── multi_strategy.py       # 多策略模拟盘
+│   ├── snapshot_manager.py     # 热启动快照管理
+│   ├── resset_data.py          # 锐思文本分析 API 封装
+│   ├── finance_data.py         # 金融数据 (AKShare)
+│   ├── finance_trigger.py      # 金融数据触发器
+│   ├── trigger_system.py       # 统一触发系统
+│   ├── evaluator.py            # RAG 评估器 (RAGAS)
+│   ├── reporter.py             # 评估报告
+│   ├── compliance_checker.py   # 合规审查
+│   ├── auth.py                 # 用户认证
+│   ├── onboarding.py           # 新手引导
+│   └── config.py               # 配置管理
 │
-├── src/                     # 源代码目录
-│   ├── streamlit_app.py     # Streamlit 主应用（多页面）
-│   ├── rag.py               # RAG 检索与生成逻辑
-│   ├── knowledge_graph.py   # 知识图谱 (Neo4j)
-│   ├── intent_classifier.py # 意图分类
-│   ├── quantitative.py      # 量化回测引擎
-│   ├── finance_data.py      # 金融数据 (AKShare)
-│   ├── trigger_system.py    # 触发系统
-│   ├── evaluator.py         # RAG 评估器 (RAGAS)
-│   ├── reporter.py          # 评估报告
-│   ├── auth.py              # 用户认证
-│   └── config.py            # 配置管理
+├── scripts/                    # 脚本目录
+├── elastic-start-local/        # ES 本地配置
+├── akquant-main/               # AKQuant 量化框架
 │
-├── scripts/                 # 脚本目录
-│   └── index_documents.py   # 文档索引脚本
-│
-├── elastic-start-local/     # ES 本地配置
-├── akquant-main/           # AKQuant 量化框架
-│
-├── requirements.txt         # Python 依赖
-├── .env                    # 环境变量配置
-└── docker-compose.yml       # Docker 服务编排
+├── requirements.txt            # Python 依赖
+├── start.bat                   # 一键启动脚本（Windows）
+└── .env                        # 环境变量配置
 ```
-
----
-
-## 系统架构图
-
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                           FinRAG-Advisor 系统架构                        │
-├──────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │                         用户界面层 (Streamlit)                   │    │
-│  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐    │    │
-│  │  │   CHAT  │ │  MARKET │ │    KG   │ │  QUANT  │ │   EVAL  │    │    │
-│  │  │  对话页 │ │  行情页  │ │ 知识图谱 │ │ 量化回测 │ │  评估页 │   │    │
-│  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘    │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
-│                                    │                                    │
-│  ┌─────────────────────────────────┴─────────────────────────────────┐  │
-│  │                      业务逻辑层 (LangChain/LangGraph)              │  │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐               │  │
-│  │  │意图分类器 │ │ RAG 检索 │ │合规审查器 │ │回测引擎  │               │  │
-│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘               │  │
-│  └───────────────────────────────────────────────────────────────────┘  │
-│          │                                    │                         │
-│  ┌───────┴────────────────────────────────────┴───────────────┐         │
-│  │                         数据层                             │       │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │       │
-│  │  │Elasticsearch│  │    Neo4j    │  │   AKShare   │         │       │
-│  │  │  向量存储    │  │  知识图谱   │  │  金融数据    │         │       │
-│  │  │   :9200     │  │   :7687     │  │            │           │       │
-│  │  └─────────────┘  └─────────────┘  └─────────────┘           │       │
-│  └─────────────────────────────────────────────────────────────────┘       │
-│                                    │                                     │
-│  ┌─────────────────────────────────┴─────────────────────────────┐       │
-│  │                      模型层 (Ollama 本地)                         │       │
-│  │  ┌─────────────────────┐    ┌─────────────────────┐           │       │
-│  │  │  my-bge-m3           │    │  my-qwen25          │           │       │
-│  │  │  (Embedding)         │    │  (对话生成)          │           │       │
-│  │  └─────────────────────┘    └─────────────────────┘           │       │
-│  └─────────────────────────────────────────────────────────────────┘       │
-│                                                                          │
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 功能模块说明
-
-| 模块 | 说明 |
-|------|------|
-| **CHAT** | 基于 RAG 的智能问答，支持检索增强和对话历史 |
-| **MARKET** | K线图、均线、MACD、RSI 等技术指标可视化 |
-| **KG** | Neo4j 知识图谱可视化与查询 |
-| **QUANT** | AKQuant 量化回测，支持基准对比和流式进度 |
-| **EVAL** | RAGAS 框架评估：Faithfulness、Context Precision 等 |
 
 ---
 
@@ -430,16 +311,45 @@ langchain-ollama-elasticsearch/
 
 | 组件 | 技术 | 说明 |
 |:-----|:-----|:-----|
-| LLM | Ollama (Qwen, Llama) | 本地大模型推理 |
+| LLM | Ollama (Qwen2.5) | 本地大模型推理 |
 | Embedding | BGE-M3 | 文本向量化 |
 | 向量数据库 | Elasticsearch 8.11 | 文档存储与检索 |
 | 知识图谱 | Neo4j 5.15 | 图数据库 |
 | 金融数据 | AKShare | 免费金融数据接口 |
-| 量化框架 | AKQuant | 策略回测 |
+| 文本分析 | RESSET (锐思) | 金融文本分析 API |
+| 量化框架 | AKQuant | 策略回测 + 热启动 |
+| ML 框架 | scikit-learn / XGBoost / PyTorch | 机器学习策略 |
 | RAG 框架 | LangChain + LangGraph | 应用框架 |
 | 评估框架 | RAGAS | RAG 系统评估 |
 | Web UI | Streamlit | 前端界面 |
 | 可视化 | Plotly | 图表展示 |
+
+---
+
+## 数据流示意
+
+```
+用户提问
+  │
+  ├─→ 意图分类 → 触发系统判断
+  │     │
+  │     ├─→ 金融关键词 → AKShare 实时数据注入
+  │     ├─→ 年报/研报关键词 → 锐思 API 自动获取
+  │     ├─→ ML 关键词 → 策略/快照信息注入
+  │     └─→ 知识图谱 → Neo4j 检索
+  │
+  ├─→ 向量检索 (Elasticsearch)
+  │     └─→ 相似度过滤 + Reranker 精排
+  │
+  ├─→ Prompt 组装
+  │     ├─ 检索文档 + 金融数据 + 锐思数据
+  │     └─ 锐思工具描述（LLM 可自主调用）
+  │
+  ├─→ LLM 生成回答
+  │     └─→ 检测 [RESSET_CALL:...] 标记 → 调用 API → 补充数据
+  │
+  └─→ 合规审查 → 最终回答
+```
 
 ---
 

@@ -34,6 +34,7 @@ class TriggerType(Enum):
     MEMORY = "memory"       # 记忆检索
     COMPLIANCE = "compliance"  # 合规审查
     QUANT = "quant"         # AKQuant 量化策略
+    RESSET = "resset"       # 锐思文本分析 API
     KG = "kg"               # Neo4j 知识图谱
     GENERAL = "general"     # 通用处理
 
@@ -129,7 +130,25 @@ class KeywordTrigger(BaseTrigger):
         "quant": [
             "量化", "回测", "策略", "均线", "rsi", "macd", "布林带", "金叉", "死叉",
             "交易", "收益率", "夏普比率", "backtest", "strategy", "quantitative",
-            "买入信号", "卖出信号", "止盈", "止损", "仓位", "持仓"
+            "买入信号", "卖出信号", "止盈", "止损", "仓位", "持仓",
+            # ML / 热启动 / 多策略 扩展
+            "机器学习", "训练模型", "滚动训练", "walk_forward", "walkforward",
+            "热启动", "快照恢复", "checkpoint", "warm_start", "warmstart",
+            "多策略", "模拟盘", "组合策略", "slot",
+            "xgboost", "lightgbm", "randomforest", "lstm", "transformer",
+            "特征工程", "pipeline", "交叉验证", "过拟合", "深度学习",
+        ],
+        # 锐思文本分析
+        "resset": [
+            "年报", "季报", "年度报告", "季度报告", "问询函", "招股说明书",
+            "政府工作报告", "政府报告", "ipo招股", "10k", "10q",
+            "财经资讯", "财经新闻", "新闻资讯",
+            "研究报告", "行业分析", "宏观分析", "公司研究", "券商研报",
+            "股吧", "东方财富", "雪球", "股民评论",
+            "房产拍卖", "法拍", "司法拍卖",
+            "锐思", "resset",
+            "内控报告", "社会责任报告", "审计报告",
+            "业绩说明会", "上市公司公告",
         ],
         # Neo4j 知识图谱
         "kg": [
@@ -286,6 +305,7 @@ class TriggerManager:
             TriggerType.MEMORY: KeywordTrigger(TriggerType.MEMORY),
             TriggerType.COMPLIANCE: KeywordTrigger(TriggerType.COMPLIANCE),
             TriggerType.QUANT: KeywordTrigger(TriggerType.QUANT),
+            TriggerType.RESSET: KeywordTrigger(TriggerType.RESSET),
             TriggerType.KG: KeywordTrigger(TriggerType.KG),
         }
         
