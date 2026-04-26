@@ -294,7 +294,11 @@ class WalkForwardSklearnStrategy(Strategy):
         if not self.is_restored:
             self._init_model()
             self._init_scaler()
-        self.subscribe("AAPL")
+        sym = getattr(self, '_target_symbol', None) or getattr(self, 'symbols', 'AAPL')
+        if isinstance(sym, (list, tuple)):
+            for s in sym: self.subscribe(s)
+        elif sym:
+            self.subscribe(sym)
 
     def on_resume(self):
         """热启动恢复时调用"""
@@ -456,15 +460,22 @@ class WalkForwardPyTorchStrategy(Strategy):
         # 内部状态
         self._model = None
         self._optimizer = None
+        self._scaler = None
         self._trained = False
         self._bar_count = 0
         self._probability_threshold = 0.55
         self.warmup_period = self._warmup + self.train_window
+        self._symbol = None
 
     def on_start(self):
         if not self.is_restored:
             self._init_model()
-        self.subscribe("AAPL")
+            self._init_scaler()
+        sym = getattr(self, '_target_symbol', None) or getattr(self, 'symbols', 'AAPL')
+        if isinstance(sym, (list, tuple)):
+            for s in sym: self.subscribe(s)
+        elif sym:
+            self.subscribe(sym)
 
     def on_resume(self):
         """热启动恢复"""
@@ -499,6 +510,14 @@ class WalkForwardPyTorchStrategy(Strategy):
             print("[ML] PyTorch 未安装，LSTM 策略不可用。请安装: pip install torch")
             self._model = None
 
+    def _init_scaler(self):
+        """初始化标准化器"""
+        try:
+            from sklearn.preprocessing import StandardScaler
+            self._scaler = StandardScaler()
+        except ImportError:
+            self._scaler = None
+
     def _train_model(self, X_train, y_train):
         """训练 PyTorch 模型"""
         import torch
@@ -511,6 +530,10 @@ class WalkForwardPyTorchStrategy(Strategy):
         seq_len = min(10, len(X_train) - 1)
         if seq_len < 2:
             return
+
+        # 标准化
+        if self._scaler is not None:
+            X_train = self._scaler.fit_transform(X_train)
 
         X_seq = []
         y_seq = []
@@ -535,6 +558,8 @@ class WalkForwardPyTorchStrategy(Strategy):
 
     def on_bar(self, bar):
         self._bar_count += 1
+        if self._symbol is None:
+            self._symbol = bar.symbol
 
         closes = self.get_history(
             count=self.train_window + self._warmup,
@@ -574,17 +599,31 @@ class WalkForwardPyTorchStrategy(Strategy):
 
             X_infer = self._feature_fn(temp_df, self.feature_config, mode="inference")
 
-            seq_len = min(10, len(X_infer))
+            # 推理时取最近完整的 seq_len 行构造序列，而不是只复制最后一行
+            full_X, _ = self._feature_fn(temp_df, self.feature_config, mode="training")
+            if self._scaler is not None and full_X is not None and len(full_X) > 0:
+                full_X = self._scaler.transform(full_X)
+
+            seq_len = min(10, len(full_X)) if full_X is not None else 1
             if seq_len < 2:
+                # 数据不足时复制当前推理点凑数
                 X_seq = np.tile(X_infer, (10, 1))[-10:]
             else:
-                X_seq = X_infer[-seq_len:]
+                X_seq = full_X[-seq_len:]
 
             X_tensor = torch.FloatTensor(X_seq).unsqueeze(0).to(self.device)
 
             self._model.eval()
             with torch.no_grad():
                 signal = self._model(X_tensor).item()
+
+            # 调试：当信号在死区时打印提示（仅前 5 次）
+            if hasattr(self, '_debug_count') and self._debug_count < 5:
+                if 0.45 <= signal <= 0.55:
+                    print(f"[LSTM DEBUG] bar={self._bar_count} signal={signal:.4f} (in dead zone)")
+                self._debug_count += 1
+            elif not hasattr(self, '_debug_count'):
+                self._debug_count = 0
 
             position = self.get_position(bar.symbol)
 

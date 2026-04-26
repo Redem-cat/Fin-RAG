@@ -1,7 +1,17 @@
-# RAG architecture using LangChain, Ollama and Elasticsearch
+# RAG architecture using LangChain, DeepSeek API and Elasticsearch
 # Modified by Redem-cat
 
 import os
+import sys
+
+# 修复 Windows 控制台编码问题：强制使用 UTF-8 输出
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, IOError):
+        pass
+
 from datetime import datetime, timedelta
 from pathlib import Path
 import json
@@ -13,7 +23,7 @@ from dotenv import load_dotenv
 
 from langchain_elasticsearch import ElasticsearchStore
 from langchain_ollama import OllamaEmbeddings
-from langchain_ollama import ChatOllama
+from src.llm_client import get_llm, ChatDeepSeek
 from langchain_core.prompts import PromptTemplate
 from langchain_core.documents import Document
 from langgraph.graph import START, StateGraph
@@ -90,7 +100,7 @@ HYDE_GENERATE_PROMPT = PromptTemplate.from_template(
 )
 
 
-def generate_hypothetical_document(question: str, llm_model: ChatOllama = None) -> str:
+def generate_hypothetical_document(question: str, llm_model: ChatDeepSeek = None) -> str:
     """
     使用 LLM 生成假设性文档（HyDE 核心）
     
@@ -233,14 +243,14 @@ def _get_embeddings():
 
 
 def _get_llm():
-    """延迟加载 LLM"""
+    """延迟加载 LLM（使用 DeepSeek API）"""
     global llm, _loaded
     if _loaded["llm"]:
         return llm
-    print("正在加载 LLM 模型...")
-    llm = ChatOllama(model="my-qwen25", temperature=0.0000000001)
+    print("正在连接 DeepSeek API...")
+    llm = get_llm(temperature=0.0)
     _loaded["llm"] = True
-    print("[OK] LLM 加载完成")
+    print("[OK] DeepSeek LLM 加载完成")
     return llm
 
 
@@ -332,13 +342,17 @@ def rerank_documents(query: str, documents: List[Document], top_k: int = 3) -> L
     # 获取重排分数
     try:
         scores = current_reranker.predict(pairs)
-        
+
+        # BGE-reranker 返回的是 logits，通过 sigmoid 归一化到 0-1
+        import numpy as np
+        scores = 1.0 / (1.0 + np.exp(-np.array(scores)))
+
         # 将文档和分数配对
         doc_scores = list(zip(documents, scores))
-        
+
         # 按分数降序排序
         doc_scores.sort(key=lambda x: x[1], reverse=True)
-        
+
         # 返回 top_k
         return doc_scores[:top_k]
     except Exception as e:
@@ -346,26 +360,6 @@ def rerank_documents(query: str, documents: List[Document], top_k: int = 3) -> L
         return [(doc, 1.0) for doc in documents[:top_k]]
 
 
-# LLM
-llm = ChatOllama(model="my-qwen25", temperature=0.0000000001)
-
-# 合规审查器（使用 DeepSeek API）
-try:
-    from src.compliance_checker import ComplianceChecker
-    compliance_checker = ComplianceChecker()
-    COMPLIANCE_ENABLED = True
-except ImportError as e:
-    print(f"警告: ComplianceChecker 模块导入失败: {e}")
-    COMPLIANCE_ENABLED = False
-    compliance_checker = None
-except ValueError as e:
-    print(f"警告: 合规审查器初始化失败: {e}")
-    COMPLIANCE_ENABLED = False
-    compliance_checker = None
-except Exception as e:
-    print(f"警告: 合规审查器初始化失败: {e}")
-    COMPLIANCE_ENABLED = False
-    compliance_checker = None
 
 
 # =========================
@@ -448,7 +442,10 @@ class MemoryManager:
         for file_path in files:
             if not file_path.exists():
                 continue
-            content = file_path.read_text(encoding="utf-8").lower()
+            try:
+                content = file_path.read_text(encoding="utf-8").lower()
+            except (OSError, IOError):
+                continue
             file_keywords = self._extract_keywords(content)
             
             # 检查是否有交集
@@ -466,7 +463,12 @@ class MemoryManager:
         
         scored_files = []
         for file_path in files:
-            content = file_path.read_text(encoding="utf-8")
+            if not file_path.exists():
+                continue
+            try:
+                content = file_path.read_text(encoding="utf-8")
+            except (OSError, IOError):
+                continue
             if not content.strip():
                 continue
             
@@ -541,7 +543,32 @@ class MemoryManager:
             formatted.append(f"<memory-snippet file=\"{name}\" score=\"{score:.3f}\">\n{chunk}\n</memory-snippet>")
         
         return "\n\n".join(formatted)
-    
+
+    def get_recent_conversation(self, rounds: int = 5) -> str:
+        """获取最近 N 轮完整对话（用于多轮对话的指代消解）"""
+        # 读取最近几天的日志，按时间倒序
+        all_lines = []
+        days_to_search = 7
+        for i in range(days_to_search):
+            day = datetime.now() - timedelta(days=i)
+            day_file = self.daily_dir / f"{day.strftime('%Y-%m-%d')}.md"
+            if day_file.exists():
+                content = day_file.read_text(encoding="utf-8")
+                # 提取对话行（格式: - **timestamp 角色**: 内容）
+                for line in content.split("\n"):
+                    line = line.strip()
+                    if line.startswith("- **") and (" 用户**:" in line or " AI**:" in line):
+                        all_lines.append(line)
+
+        # 按时间正序排列，取最近 rounds*2 行（每轮包含用户+AI）
+        all_lines.reverse()
+        recent_lines = all_lines[-rounds * 2:]
+
+        if not recent_lines:
+            return ""
+
+        return "\n".join(recent_lines)
+
     def compact(self):
         """定期将重要信息压缩到长期记忆"""
         # 读取最近几天的日志
@@ -596,9 +623,27 @@ memory_manager = None  # 延迟初始化
 # 注意：不要在这里直接初始化 ElasticsearchStore！
 # 它会在首次使用时通过 _get_vector_db() 延迟初始化
 
+# =========================
+# 🔹 系统身份定义
+# =========================
+SYSTEM_IDENTITY = """你是一个专业的金融智能助手，名叫 FinRAG-Advisor。
+
+你的职责是：
+1. 回答金融法规、投资理财相关问题
+2. 提供市场数据分析和投资建议
+3. 提示投资风险，确保合规性
+
+请基于提供的知识库信息，给出准确、专业的回答。
+如果遇到不确定的问题，请明确告知用户你无法回答。"""
+
 # 定义 Prompt（包含对话历史）
 prompt_template = PromptTemplate.from_template(
-    template="""Previous conversation:
+    template="""{system_identity}
+
+Recent conversation history:
+{recent_conversation}
+
+Relevant past memories:
 {history}
 
 [DOCUMENT FRAGMENTS START]
@@ -612,9 +657,10 @@ prompt_template = PromptTemplate.from_template(
 Instructions:
 1. The text above in [DOCUMENT FRAGMENTS START]...[DOCUMENT FRAGMENTS END] contains retrieved document fragments for reference only.
 2. The text above in [USER QUESTION START]...[USER QUESTION END] is the user's question.
-3. Answer the user's question based on the document fragments when relevant, otherwise use your own knowledge.
-4. CRITICAL: Answer in the SAME LANGUAGE as the user's question, NOT the language of the document fragments.
-5. Write only three sentences."""
+3. Use the Recent conversation history to understand context and resolve pronouns (e.g., "it", "this", "that") in the current question.
+4. Answer the user's question based on the document fragments when relevant, otherwise use your own knowledge.
+5. CRITICAL: Answer in the SAME LANGUAGE as the user's question, NOT the language of the document fragments.
+6. Write only three sentences."""
 )
 
 # =========================
@@ -667,7 +713,11 @@ class State(TypedDict):
     top_k: int
     context: List[Document]
     history: str
+    recent_conversation: str
     answer: str
+    # 触发系统注入的上下文
+    resset_context: str
+    ml_context: str
 
 # 定义应用步骤
 def retrieve(state: State):
@@ -715,13 +765,24 @@ def retrieve(state: State):
             else:
                 reranked_docs.append((item, 1.0))
     
-    # 检索相关对话历史
+    # 检索相关对话历史（用于长期记忆召回）
     relevant_history = memory.retrieve_relevant_history(question, top_k=3)
-    
+
+    # 获取最近 N 轮完整对话（用于多轮对话指代消解）
+    recent_conversation = memory.get_recent_conversation(rounds=5)
+
+    # ===== 诊断日志：追踪对话历史检索 =====
+    print(f"[诊断-retrieve] 检索到的对话历史长度: {len(relevant_history)} 字符")
+    print(f"[诊断-retrieve] 最近对话轮次: {len(recent_conversation.split(chr(10))) if recent_conversation else 0} 行")
+    if relevant_history:
+        print(f"[诊断-retrieve] 对话历史内容:\n{relevant_history[:500]}")
+        if question in relevant_history:
+            print(f"[诊断-retrieve⚠️] 当前用户问题出现在检索到的对话历史中!")
+
     # 如果启用了 HyDE，将假设性文档也传给后续步骤
     extra_data = {"hyde_doc": hypothetical_doc} if HYDE_ENABLED else {}
-    
-    return {"context": reranked_docs, "history": relevant_history, **extra_data}
+
+    return {"context": reranked_docs, "history": relevant_history, "recent_conversation": recent_conversation, **extra_data}
 
 
 def generate(state: State):
@@ -822,25 +883,32 @@ def generate(state: State):
         else:
             context_info = "（未找到足够相关的文档片段）"
 
-    history = state.get("history", "") or "No previous conversation."
+    history = state.get("history", "") or "No relevant past memories."
+    recent_conversation = state.get("recent_conversation", "") or "No previous conversation."
 
     # =========================
-    # 🔹 ML 策略上下文自动补充
+    # 🔹 ML 策略上下文补充（优先使用触发系统注入，回退到关键词检测）
     # =========================
-    ml_context = ""
-    try:
-        ml_keywords = ["机器学习", "训练模型", "滚动训练", "walk_forward", "walkforward",
-                       "xgboost", "lightgbm", "randomforest", "lstm", "深度学习",
-                       "热启动", "快照恢复", "checkpoint", "warm_start", "warmstart", "快照",
-                       "多策略", "模拟盘", "组合策略", "slot",
-                       "特征工程", "pipeline", "交叉验证", "过拟合",
-                       "量化", "回测", "策略"]
-        if any(kw in question for kw in ml_keywords):
-            ml_context = get_ml_strategy_context(question)
-            if ml_context:
-                print(f"[ML策略] 检测到量化/ML相关问题，补充上下文")
-    except Exception as e:
-        print(f"ML策略上下文获取失败: {e}")
+    ml_context = state.get("ml_context", "") or ""
+    if not ml_context:
+        try:
+            ml_keywords = ["机器学习", "训练模型", "滚动训练", "walk_forward", "walkforward",
+                           "xgboost", "lightgbm", "randomforest", "lstm", "深度学习",
+                           "热启动", "快照恢复", "checkpoint", "warm_start", "warmstart", "快照",
+                           "多策略", "模拟盘", "组合策略", "slot",
+                           "特征工程", "pipeline", "交叉验证", "过拟合",
+                           "量化", "回测", "策略"]
+            if any(kw in question for kw in ml_keywords):
+                ml_context = get_ml_strategy_context(question)
+                if ml_context:
+                    print(f"[ML策略] 检测到量化/ML相关问题，补充上下文")
+        except Exception as e:
+            print(f"ML策略上下文获取失败: {e}")
+
+    # 锐思上下文（优先使用触发系统注入，回退到关键词检测）
+    resset_context_from_trigger = state.get("resset_context", "") or ""
+    if resset_context_from_trigger:
+        resset_context = resset_context_from_trigger
 
     # 合并上下文：文档检索 + ML 上下文 + 锐思文本 + 金融数据
     combined_context = docs_content
@@ -854,14 +922,21 @@ def generate(state: State):
     # 根据是否使用上下文调整提示词
     if use_retrieved_context and docs_content:
         prompt = prompt_template.format(
+            system_identity=SYSTEM_IDENTITY,
             question=state["question"],
             context=combined_context,
-            history=history
+            history=history,
+            recent_conversation=recent_conversation
         )
     elif finance_context:
         # 没有文档检索结果，但有金融数据
         finance_prompt_template = PromptTemplate.from_template(
-            template="""Previous conversation:
+            template="""{system_identity}
+
+Recent conversation history:
+{recent_conversation}
+
+Relevant past memories:
 {history}
 
 [FINANCE DATA START]
@@ -874,20 +949,28 @@ def generate(state: State):
 
 Instructions:
 1. The text above in [FINANCE DATA START]...[FINANCE DATA END] contains real-time financial data.
-2. Use the financial data to answer the question when relevant.
-3. Answer based on your own knowledge if the financial data is not sufficient.
-4. CRITICAL: Answer in the SAME LANGUAGE as the user's question.
-5. Write only three sentences."""
+2. Use the Recent conversation history to understand context and resolve pronouns.
+3. Use the financial data to answer the question when relevant.
+4. Answer based on your own knowledge if the financial data is not sufficient.
+5. CRITICAL: Answer in the SAME LANGUAGE as the user's question.
+6. Write only three sentences."""
         )
         prompt = finance_prompt_template.format(
+            system_identity=SYSTEM_IDENTITY,
             question=state["question"],
             finance_context=finance_context,
-            history=history
+            history=history,
+            recent_conversation=recent_conversation
         )
     else:
         # 不使用检索结果，直接基于模型知识回答
         no_context_prompt = PromptTemplate.from_template(
-            template="""Previous conversation:
+            template="""{system_identity}
+
+Recent conversation history:
+{recent_conversation}
+
+Relevant past memories:
 {history}
 
 [USER QUESTION START]
@@ -895,14 +978,17 @@ Instructions:
 [USER QUESTION END]
 
 Instructions:
-1. The retrieved documents are not relevant to this question.
-2. Answer based on your own knowledge.
-3. CRITICAL: Answer in the SAME LANGUAGE as the user's question.
-4. Write only three sentences."""
+1. Use the Recent conversation history to understand context and resolve pronouns.
+2. The retrieved documents are not relevant to this question.
+3. Answer based on your own knowledge.
+4. CRITICAL: Answer in the SAME LANGUAGE as the user's question.
+5. Write only three sentences."""
         )
         prompt = no_context_prompt.format(
+            system_identity=SYSTEM_IDENTITY,
             question=state["question"],
-            history=history
+            history=history,
+            recent_conversation=recent_conversation
         )
 
     # 🔹 注入锐思工具描述到 prompt 末尾
@@ -916,7 +1002,32 @@ Instructions:
 
     # 延迟加载 LLM
     llm_model = _get_llm()
+
+    # ===== 诊断日志：追踪用户问题是否被 LLM 重复返回 =====
+    print(f"\n{'='*60}")
+    print(f"[诊断] 用户原始问题: {state['question']}")
+    print(f"[诊断] 发送给 LLM 的 prompt 长度: {len(prompt)} 字符")
+    print(f"[诊断] prompt 前500字符:\n{prompt[:500]}")
+    print(f"[诊断] prompt 后300字符:\n{prompt[-300:]}")
+    print(f"{'='*60}")
+
     response = llm_model.invoke(prompt)
+
+    # 🔹 诊断：检查 LLM 原始回复是否包含用户问题
+    raw_answer = response.content
+    user_q = state["question"]
+    print(f"\n[诊断] LLM 原始回复长度: {len(raw_answer)} 字符")
+    print(f"[诊断] LLM 原始回复前300字符:\n{raw_answer[:300]}")
+    if user_q in raw_answer:
+        # 找到用户问题在回复中出现的位置
+        idx = raw_answer.find(user_q)
+        context_start = max(0, idx - 50)
+        context_end = min(len(raw_answer), idx + len(user_q) + 50)
+        print(f"[诊断⚠️] 用户问题出现在 LLM 回复中! 位置: {idx}")
+        print(f"[诊断⚠️] 上下文: ...{raw_answer[context_start:context_end]}...")
+    else:
+        print(f"[诊断✅] 用户问题未出现在 LLM 回复中")
+    print(f"{'='*60}\n")
 
     # 🔹 后处理：检测 LLM 输出中的 RESSET 调用标记并执行
     answer_text = response.content
@@ -1092,84 +1203,107 @@ def ask_question(question: str, top_k: int = 3, user_name: str = None) -> dict:
         print(f"[意图分类] 分类失败，使用默认: {e}")
     
     # =========================
-    # 🔹 步骤2: 根据意图分支处理
+    # 🔹 步骤2: Agent 模式（按需调用工具）
     # =========================
-    use_finance = intent in ["investment", "mixed", "general"]
-    use_rag = intent in ["investment", "policy", "mixed", "general"]  # 投资意图也需要RAG检索
-    
-    # 只有纯投资咨询（需要实时行情）才跳过RAG
-    # 判断标准：问题包含具体的股票代码、基金代码或实时行情关键词
-    pure_investment_patterns = [
-        r'sh\d{6}', r'sz\d{6}',  # 股票代码
-        r'\d{6}',  # 基金代码
-        r'今天.*(涨|跌|收盘)', r'实时行情', r'当前价格',
-    ]
-    is_pure_investment = any(re.search(p, question) for p in pure_investment_patterns)
-    
-    if intent == "investment" and is_pure_investment and not use_rag:
-        return _handle_investment_question(question, top_k)
-    
-    # 正常RAG流程
-    response = graph.invoke({"question": question, "top_k": top_k})
+    memory = _get_memory_manager()
+    recent_conversation = memory.get_recent_conversation(rounds=5)
+
+    _agent_mode = True
+    try:
+        from src.agent import agent_ask as _agent_ask
+        agent_result = _agent_ask(question, conversation_history=recent_conversation, top_k=top_k)
+        agent_answer = agent_result["answer"]
+        agent_used_context = agent_result["used_context"]
+        agent_tool_calls = agent_result.get("tool_calls", [])
+
+        # 从工具调用结果构建 sources（用于前端展示）
+        sources = []
+        for tc in agent_tool_calls:
+            if tc["name"] == "rag_search" and tc["result"]:
+                # 解析检索结果，构建 source 列表
+                sources.append({
+                    "content": tc["result"][:1000],
+                    "source": f"Agent检索: {tc['args'].get('query', '')}",
+                    "similarity": 0.85
+                })
+
+        used_context = agent_used_context
+        print(f"[Agent] 工具调用: {len(agent_tool_calls)} 个, 使用上下文: {used_context}")
+
+    except Exception as e:
+        print(f"[Agent] 执行失败，fallback 到传统 RAG: {e}")
+        _agent_mode = False
+        # Fallback: 传统 RAG 流程
+        response = graph.invoke({
+            "question": question,
+            "top_k": top_k,
+            "resset_context": resset_context_for_answer,
+            "ml_context": ml_context_for_answer,
+        })
+        agent_answer = response["answer"]
+        used_context = False
+        sources = []
 
     # 保存对话历史到 Markdown（延迟加载）
     memory = _get_memory_manager()
     memory.add_message("用户", question)
-    memory.add_message("AI", response["answer"])
+    memory.add_message("AI", agent_answer)
 
-    # 整理结果（处理带分数的文档）
-    sources = []
-    context_items = response.get("context", [])
+    # Fallback 模式下需要重新处理 sources
+    if not _agent_mode:
+        # 整理结果（处理带分数的文档）
+        sources = []
+        context_items = response.get("context", [])
 
-    # 提取所有分数
-    all_scores = []
-    for item in context_items:
-        if isinstance(item, tuple):
-            _, score = item
-            all_scores.append(score)
+        # 提取所有分数
+        all_scores = []
+        for item in context_items:
+            if isinstance(item, tuple):
+                _, score = item
+                all_scores.append(score)
 
-    # 判断是距离还是相似度
-    has_scores = bool(all_scores)
-    is_distance = False
-    if has_scores:
-        max_score_val = max(all_scores)
-        is_distance = max_score_val > 1.0
+        # 判断是距离还是相似度
+        has_scores = bool(all_scores)
+        is_distance = False
+        if has_scores:
+            max_score_val = max(all_scores)
+            is_distance = max_score_val > 1.0
 
-    # 使用与 generate 函数相同的阈值
-    DOC_SIMILARITY_THRESHOLD = 0.75
+        # 使用与 generate 函数相同的阈值
+        DOC_SIMILARITY_THRESHOLD = 0.75
 
-    # 过滤并处理文档片段
-    for item in context_items:
-        if isinstance(item, tuple):
-            doc, score = item
-            # 判断是距离还是相似度
-            if has_scores:
-                if is_distance:
-                    # 距离转换为相似度: similarity = 1 / (1 + distance)
-                    normalized_score = 1.0 / (1.0 + score)
+        # 过滤并处理文档片段
+        for item in context_items:
+            if isinstance(item, tuple):
+                doc, score = item
+                # 判断是距离还是相似度
+                if has_scores:
+                    if is_distance:
+                        # 距离转换为相似度: similarity = 1 / (1 + distance)
+                        normalized_score = 1.0 / (1.0 + score)
+                    else:
+                        # 已经是相似度，直接使用
+                        normalized_score = score
                 else:
-                    # 已经是相似度，直接使用
-                    normalized_score = score
-            else:
-                normalized_score = 0.5
+                    normalized_score = 0.5
 
-            # 只添加达到文档相似度阈值的文档
-            if normalized_score >= DOC_SIMILARITY_THRESHOLD:
-                sources.append({
-                    "content": doc.page_content,
-                    "source": doc.metadata.get("source", "unknown"),
-                    "page": doc.metadata.get("page_label", "unknown"),
-                    "similarity": normalized_score
-                })
+                # 只添加达到文档相似度阈值的文档
+                if normalized_score >= DOC_SIMILARITY_THRESHOLD:
+                    sources.append({
+                        "content": doc.page_content,
+                        "source": doc.metadata.get("source", "unknown"),
+                        "page": doc.metadata.get("page_label", "unknown"),
+                        "similarity": normalized_score
+                    })
 
-    # 根据 sources 是否为空判断是否使用了检索结果
-    used_context = len(sources) > 0
+        # 根据 sources 是否为空判断是否使用了检索结果
+        used_context = len(sources) > 0
 
     # =========================
     # 🔹 合规审查（延迟加载）
     # =========================
     compliance_result = None
-    answer_with_compliance = response["answer"]
+    answer_with_compliance = agent_answer
 
     # 延迟加载合规审查器
     try:
@@ -1194,13 +1328,13 @@ def ask_question(question: str, top_k: int = 3, user_name: str = None) -> dict:
                     # 调用合规审查
                     compliance_result = checker.check(
                         question=question,
-                        answer=response["answer"],
+                        answer=agent_answer,
                         product_info=product_info
                     )
 
                     # 在答案末尾添加合规标识
                     compliance_tag = _build_compliance_tag(compliance_result)
-                    answer_with_compliance = response["answer"] + compliance_tag
+                    answer_with_compliance = agent_answer + compliance_tag
 
                 except Exception as e:
                     print(f"合规审查出错: {e}")
@@ -1238,10 +1372,22 @@ def ask_question(question: str, top_k: int = 3, user_name: str = None) -> dict:
             "summary": f"合规审查初始化失败: {str(e)}"
         }
 
-    # 添加用户称呼（如果有）
+    # 添加用户称呼（如果有，且看起来像合理的人名）
     final_answer = answer_with_compliance
-    if user_name:
+    if user_name and len(user_name) <= 12 and not any(c in user_name for c in "。，！？；"):
         final_answer = f"{user_name}，{answer_with_compliance}"
+
+    # ===== 诊断日志：追踪最终返回给前端的答案 =====
+    print(f"\n[诊断-ask_question] 用户问题: {question}")
+    print(f"[诊断-ask_question] 最终答案前300字符: {final_answer[:300]}")
+    if question in final_answer:
+        idx = final_answer.find(question)
+        ctx_start = max(0, idx - 30)
+        ctx_end = min(len(final_answer), idx + len(question) + 30)
+        print(f"[诊断-ask_question⚠️] 用户问题出现在最终答案中! 位置: {idx}")
+        print(f"[诊断-ask_question⚠️] 上下文: ...{final_answer[ctx_start:ctx_end]}...")
+    else:
+        print(f"[诊断-ask_question✅] 用户问题未出现在最终答案中")
 
     # =========================
     # 🔹 引用追踪
@@ -1310,17 +1456,18 @@ def _handle_investment_question(question: str, top_k: int):
     只使用金融数据 + LLM回答
     """
     from src.finance_trigger import get_finance_trigger
-    from langchain_ollama import ChatOllama
     
     # 1. 获取金融数据
     finance_trigger = get_finance_trigger()
     finance_context, finance_sources = finance_trigger.get_finance_context(question)
     
-    # 2. 使用LLM生成回答
-    llm = ChatOllama(model="my-qwen25:latest", temperature=0.7)
+    # 2. 使用 DeepSeek LLM 生成回答
+    llm = get_llm(temperature=0.7)
     
     if finance_context:
-        prompt = f"""你是一位专业的投资顾问。请根据以下实时金融数据回答用户问题。
+        prompt = f"""{SYSTEM_IDENTITY}
+
+根据以下实时金融数据回答用户问题：
 
 金融数据:
 {finance_context}
@@ -1335,7 +1482,9 @@ def _handle_investment_question(question: str, top_k: int):
 """
     else:
         # 没有获取到金融数据，使用通用回答
-        prompt = f"""你是一位专业的投资顾问。请回答以下问题。
+        prompt = f"""{SYSTEM_IDENTITY}
+
+请回答以下问题：
 
 用户问题: {question}
 
@@ -1343,7 +1492,6 @@ def _handle_investment_question(question: str, top_k: int):
 1. 基于你的金融知识回答
 2. 给出专业的投资建议
 3. 用中文回答
-4. 注意合规提示
 """
     
     response = llm.invoke(prompt)
@@ -1494,9 +1642,9 @@ def ask_question_stream(question: str, top_k: int, user_name: str = None):
         compliance_tag = _build_compliance_tag(compliance_result)
         answer_with_compliance = response["answer"] + compliance_tag
 
-    # 添加用户称呼（如果有）
+    # 添加用户称呼（如果有，且看起来像合理的人名）
     final_answer = answer_with_compliance
-    if user_name:
+    if user_name and len(user_name) <= 12 and not any(c in user_name for c in "。，！？；"):
         final_answer = f"{user_name}，{answer_with_compliance}"
 
     # 3. 流式输出答案

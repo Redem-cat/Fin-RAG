@@ -178,22 +178,107 @@ class KGWriter:
             logger.error(f"[KGWriter] 写入人物 {person_data.get('name')} 失败: {e}")
             return False
     
+    def write_product(self, product_data: Dict) -> bool:
+        """写入产品/部件节点"""
+        self._ensure_connection()
+        if not self.conn or not self.conn.is_connected():
+            return False
+        try:
+            query = """
+            MERGE (p:Product {name: $name})
+            SET p.type = $type,
+                p.process_node = $process_node,
+                p.description = $description,
+                p.updated_at = datetime()
+            """
+            self.conn.execute_write(query, {
+                "name": product_data.get("name", ""),
+                "type": product_data.get("type", ""),
+                "process_node": product_data.get("process_node", ""),
+                "description": product_data.get("description", "")
+            })
+            return True
+        except Exception as e:
+            logger.error(f"[KGWriter] 写入产品 {product_data.get('name')} 失败: {e}")
+            return False
+
+    def write_foundry(self, foundry_data: Dict) -> bool:
+        """写入代工厂节点"""
+        self._ensure_connection()
+        if not self.conn or not self.conn.is_connected():
+            return False
+        try:
+            query = """
+            MERGE (f:Foundry {name: $name})
+            SET f.location = $location,
+                f.process_node = $process_node,
+                f.capacity = $capacity,
+                f.description = $description,
+                f.updated_at = datetime()
+            """
+            self.conn.execute_write(query, {
+                "name": foundry_data.get("name", ""),
+                "location": foundry_data.get("location", ""),
+                "process_node": foundry_data.get("process_node", ""),
+                "capacity": foundry_data.get("capacity", ""),
+                "description": foundry_data.get("description", "")
+            })
+            return True
+        except Exception as e:
+            logger.error(f"[KGWriter] 写入代工厂 {foundry_data.get('name')} 失败: {e}")
+            return False
+
+    def write_material(self, material_data: Dict) -> bool:
+        """写入原材料/设备节点"""
+        self._ensure_connection()
+        if not self.conn or not self.conn.is_connected():
+            return False
+        try:
+            query = """
+            MERGE (m:Material {name: $name})
+            SET m.type = $type,
+                m.supplier = $supplier,
+                m.description = $description,
+                m.updated_at = datetime()
+            """
+            self.conn.execute_write(query, {
+                "name": material_data.get("name", ""),
+                "type": material_data.get("type", ""),
+                "supplier": material_data.get("supplier", ""),
+                "description": material_data.get("description", "")
+            })
+            return True
+        except Exception as e:
+            logger.error(f"[KGWriter] 写入材料 {material_data.get('name')} 失败: {e}")
+            return False
+
+    def write_location(self, location_data: Dict) -> bool:
+        """写入地点节点"""
+        self._ensure_connection()
+        if not self.conn or not self.conn.is_connected():
+            return False
+        try:
+            query = """
+            MERGE (l:Location {name: $name})
+            SET l.type = $type,
+                l.country = $country,
+                l.updated_at = datetime()
+            """
+            self.conn.execute_write(query, {
+                "name": location_data.get("name", ""),
+                "type": location_data.get("type", ""),
+                "country": location_data.get("country", "")
+            })
+            return True
+        except Exception as e:
+            logger.error(f"[KGWriter] 写入地点 {location_data.get('name')} 失败: {e}")
+            return False
+
     def write_relation(self, source: str, target: str, relation_type: str, 
                        source_type: str = "Company", target_type: str = "Sector",
                        properties: Dict = None) -> bool:
         """
-        写入关系
-        
-        Args:
-            source: 源节点名称
-            target: 目标节点名称
-            relation_type: 关系类型
-            source_type: 源节点类型
-            target_type: 目标节点类型
-            properties: 关系属性
-            
-        Returns:
-            是否成功
+        写入关系（支持属性，如工艺节点、占比、依赖程度、时间）
         """
         self._ensure_connection()
         
@@ -201,17 +286,29 @@ class KGWriter:
             return False
         
         try:
+            # 使用模糊匹配来定位节点，避免名称微小差异导致关系建立失败
             query = f"""
-            MATCH (source:{source_type} {{name: $source_name}})
-            MATCH (target:{target_type} {{name: $target_name}})
+            MATCH (source:{source_type})
+            WHERE toLower(source.name) CONTAINS toLower($source_name)
+               OR toLower($source_name) CONTAINS toLower(source.name)
+            WITH source
+            MATCH (target:{target_type})
+            WHERE toLower(target.name) CONTAINS toLower($target_name)
+               OR toLower($target_name) CONTAINS toLower(target.name)
             MERGE (source)-[r:{relation_type}]->(target)
             SET r += $properties, r.updated_at = datetime()
             """
             
+            props = properties or {}
+            # 自动添加时间戳
+            if "start_time" not in props:
+                from datetime import datetime
+                props["start_time"] = datetime.now().isoformat()
+            
             params = {
                 "source_name": source,
                 "target_name": target,
-                "properties": properties or {}
+                "properties": props
             }
             
             self.conn.execute_write(query, params)

@@ -33,10 +33,15 @@ ES_LOCAL_URL = os.getenv("ES_LOCAL_URL", "http://localhost:9200")
 ES_LOCAL_API_KEY = os.getenv("ES_LOCAL_API_KEY", "")
 
 
-# ==================== Ollama ====================
+# ==================== DeepSeek LLM ====================
+
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+
+
+# ==================== Ollama（已弃用，使用 DeepSeek 替代）===================
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")  # 仅作参考，不再使用
 
 
 # ==================== 其他配置 ====================

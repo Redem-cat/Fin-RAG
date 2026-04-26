@@ -1,6 +1,6 @@
 # FinRAG-Advisor: 智能投顾与合规双模 RAG 系统
 
-基于多模态知识图谱增强的智能投顾与合规审查系统，一个面向金融机构的 RAG 知识库系统 built with [LangChain](https://www.langchain.com/)、[Ollama](https://ollama.com) 和 [Elasticsearch](https://github.com/elastic/elasticsearch)。
+基于多模态知识图谱增强的智能投顾与合规审查系统，一个面向金融机构的 RAG 知识库系统 built with [LangChain](https://www.langchain.com/)、[DeepSeek](https://platform.deepseek.com/) 和 [Elasticsearch](https://github.com/elastic/elasticsearch)。
 
 该系统不仅支持客户与员工的自然语言问答，而且深入融合了投资建议生成与合规风险自动校验，实现智能服务 + 自动合规审查一体化。
 
@@ -55,29 +55,34 @@
 
 - Python 3.10+
 - Docker Desktop (用于运行 Elasticsearch 和 Neo4j)
-- Ollama (用于本地大模型)
+- DeepSeek API Key (用于大模型对话)
 
 ---
 
 ## 安装说明
 
-### 1. 安装 Ollama
+### 1. 获取 DeepSeek API Key
 
-本地运行需要安装 [Ollama](https://ollama.com/download)。
+1. 访问 [DeepSeek 开放平台](https://platform.deepseek.com/)
+2. 注册账号并获取 API Key
+3. 在 `.env` 文件中配置 `DEEPSEEK_API_KEY=your_key`
 
-#### 拉取所需模型
+> API Key 格式示例: `sk-xxxxxxxxxxxxxxxxxxxxxxxx`
+
+### 2. 安装 Ollama（仅用于 Embedding 向量化）
+
+本地运行需要安装 [Ollama](https://ollama.com/download) 来运行 Embedding 模型。
+
+#### 拉取 Embedding 模型（用于文档向量化）
 
 ```bash
-# 拉取 Embedding 模型（用于文档向量化）
+# 拉取 Embedding 模型
 ollama pull my-bge-m3
-
-# 拉取对话模型（用于生成回答）
-ollama pull my-qwen25
 ```
 
-> **注意**：首次拉取模型需要下载较大文件，请确保网络稳定。
+> **注意**：Embedding 模型只需要 `my-bge-m3`，对话功能已切换到 DeepSeek API，无需再拉取对话模型。
 
-### 2. 安装并启动 Elasticsearch
+### 3. 安装并启动 Elasticsearch
 
 ```bash
 docker run -d \
@@ -103,13 +108,14 @@ docker run -d \
 
 ### 4. 配置环境变量
 
-创建 `.env` 文件：
+创建 `.env` 文件（或编辑 `elastic-start-local/.env`）：
 
 ```bash
-OLLAMA_BASE_URL=http://localhost:11434
-EMBEDDING_MODEL=my-bge-m3
-CHAT_MODEL=my-qwen25
+DEEPSEEK_API_KEY=your_deepseek_api_key
+DEEPSEEK_MODEL=deepseek-chat
 ES_LOCAL_URL=http://localhost:9200
+EMBEDDING_MODEL=my-bge-m3
+OLLAMA_BASE_URL=http://localhost:11434
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USERNAME=neo4j
 NEO4J_PASSWORD=password
@@ -143,18 +149,20 @@ start.bat
 启动脚本会自动完成以下操作：
 
 ```
-[0/5] 检查 .env 环境配置
-[1/5] 检查 Ollama 服务 → 未运行则自动启动
-[2/5] 检查 Elasticsearch → 未运行则自动启动/创建容器
+[0/5] 检查 .env 环境配置（支持根目录或 elastic-start-local/ 下的 .env）
+[1/5] 检查 Ollama Embedding 服务 → 未运行则自动启动
+[2/5] 检查 Elasticsearch → 自动处理容器冲突并创建 es-langchain 容器
 [3/5] 检查 Neo4j (可选) → 未运行则自动启动
 [4/5] 清理 Python 缓存 (__pycache__)
 [5/5] 启动 Streamlit → 访问 http://localhost:8501
 ```
 
+> **自动处理端口冲突**：如果已有其他容器占用了 9200 端口（如名为 `es` 的旧容器），脚本会自动停止并删除该容器，然后创建名为 `es-langchain` 的新容器，确保与项目配置一致。
+
 ### 方式二：手动启动
 
 ```bash
-ollama serve                   # 1. 启动 Ollama
+ollama serve                   # 1. 启动 Ollama（仅 Embedding 模型）
 docker start es-langchain      # 2. 启动 Elasticsearch
 docker start neo4j-langchain   # 3. (可选) 启动 Neo4j
 streamlit run src/streamlit_app.py  # 4. 启动 Web 界面
@@ -168,25 +176,25 @@ streamlit run src/streamlit_app.py  # 4. 启动 Web 界面
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                           FinRAG-Advisor 系统架构                        │
+│                         FinRAG-Advisor 系统架构                          │
 ├──────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
 │  │                      用户界面层 (Streamlit 6 页)                    │  │
 │  │  ┌────────┐ ┌────────┐ ┌──────┐ ┌────────┐ ┌──────┐ ┌──────┐    │  │
 │  │  │  CHAT  │ │ MARKET │ │  KG  │ │ RESSET │ │ QUANT │ │ EVAL │    │  │
-│  │  │ 智能问答│ │ 行情数据│ │知识图谱│ │文本分析 │ │量化回测│ │ 评估 │    │  │
+│  │  │智能问答│ │行情数据│ │知识图谱│ │文本分析│ │量化回测│ │  评估  │    │  │
 │  │  └────────┘ └────────┘ └──────┘ └────────┘ └──────┘ └──────┘    │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │                                    │                                    │
 │  ┌─────────────────────────────────┴─────────────────────────────────┐  │
 │  │                  业务逻辑层 (LangChain / LangGraph)                 │  │
 │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐             │  │
-│  │  │ 意图分类 │ │ RAG 检索  │ │ 合规审查  │ │ 触发系统  │             │  │
+│  │  │ 意图分类 │ │ RAG 检索  │ │ 合规审查 │ │ 触发系统 │             │  │
 │  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘             │  │
 │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐             │  │
-│  │  │ ML 策略  │ │ 多策略   │ │ 快照管理  │ │ 锐思API  │             │  │
-│  │  │ Walk-Fwd │ │ 模拟盘   │ │ 热启动   │ │ LLM调用  │             │  │
+│  │  │ ML 策略  │ │  多策略  │ │ 快照管理 │ │ 锐思API  │             │  │
+│  │  │ Walk-Fwd │ │  模拟盘  │ │ 热启动   │ │ LLM调用  │             │  │
 │  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘             │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │          │                    │                    │                     │
@@ -194,16 +202,16 @@ streamlit run src/streamlit_app.py  # 4. 启动 Web 界面
 │  │                          数据层                              │       │
 │  │  ┌─────────────┐  ┌─────────┐  ┌─────────┐  ┌──────────┐   │       │
 │  │  │Elasticsearch│  │  Neo4j  │  │ AKShare │  │  RESSET  │   │       │
-│  │  │  向量存储    │  │ 知识图谱 │  │ 金融数据 │  │ 文本分析  │   │       │
+│  │  │  向量存储   │  │ 知识图谱│  │ 金融数据│  │ 文本分析 │   │       │
 │  │  └─────────────┘  └─────────┘  └─────────┘  └──────────┘   │       │
 │  └─────────────────────────────────────────────────────────────┘       │
 │                                    │                                     │
 │  ┌─────────────────────────────────┴─────────────────────────────┐     │
-│  │                       模型层 (Ollama 本地)                      │     │
-│  │  ┌──────────────────┐    ┌──────────────────┐                 │     │
-│  │  │   my-bge-m3      │    │   my-qwen25      │                 │     │
-│  │  │   (Embedding)    │    │   (对话生成)      │                 │     │
-│  │  └──────────────────┘    └──────────────────┘                 │     │
+│  │                    模型层                                      │     │
+│  │  ┌──────────────────────────┐    ┌─────────────────────────┐ │     │
+│  │  │    my-bge-m3 (Ollama)     │    │   DeepSeek API          │ │     │
+│  │  │   (Embedding 本地)       │    │    (对话生成 - 远程)    │ │     │
+│  │  └──────────────────────────┘    └─────────────────────────┘ │     │
 │  └─────────────────────────────────────────────────────────────┘     │
 │                                                                        │
 └────────────────────────────────────────────────────────────────────────┘
@@ -311,7 +319,7 @@ langchain-ollama-elasticsearch/
 
 | 组件 | 技术 | 说明 |
 |:-----|:-----|:-----|
-| LLM | Ollama (Qwen2.5) | 本地大模型推理 |
+| LLM | DeepSeek Chat | 远程大模型 API |
 | Embedding | BGE-M3 | 文本向量化 |
 | 向量数据库 | Elasticsearch 8.11 | 文档存储与检索 |
 | 知识图谱 | Neo4j 5.15 | 图数据库 |

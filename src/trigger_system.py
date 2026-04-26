@@ -240,14 +240,13 @@ class LLMTrigger(BaseTrigger):
         self.llm_model = llm_model
     
     def _get_llm(self):
-        """延迟加载 LLM"""
+        """延迟加载 LLM（使用 DeepSeek API）"""
         if self.llm_model is None:
             try:
-                from langchain_ollama import ChatOllama
-                model_name = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
-                self.llm_model = ChatOllama(model=model_name, temperature=0.1)
+                from src.llm_client import get_llm
+                self.llm_model = get_llm(temperature=0.1)
             except Exception as e:
-                print(f"[LLMTrigger] LLM 加载失败: {e}")
+                print(f"[LLMTrigger] DeepSeek LLM 加载失败: {e}")
                 return None
         return self.llm_model
     
@@ -346,8 +345,8 @@ class TriggerManager:
             if llm_result:
                 # 合并到已有结果
                 for existing in results:
-                    if existing.trigger_type in llm_result.trigger_type:
-                        # 提升置信度
+                    if existing.trigger_type == llm_result.trigger_type:
+                        # 提升置信度（使用精确匹配替代子串匹配）
                         existing.confidence = max(existing.confidence, llm_result.confidence)
                         existing.params.update(llm_result.params)
                         existing.reason += f" + {llm_result.reason}"

@@ -26,7 +26,7 @@ class KGScheduler:
     
     def __init__(self, log_dir: str = None):
         if log_dir is None:
-            log_dir = Path(__file__).parent.parent.parent / "data" / "scheduler_logs"
+            log_dir = Path(__file__).parent.parent.parent / "logs" / "scheduler_logs"
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
         
@@ -216,41 +216,92 @@ class KGScheduler:
 # 🔹 预定义任务
 # =========================
 def task_crawl_news():
-    """任务：爬取财经新闻"""
+    """任务：爬取财经新闻，抽取芯片供应链实体和关系"""
     from src.kg_crawler.news_crawler import get_news_crawler
-    from src.kg_builder.entity_extractor import extract_entities_from_news
+    from src.knowledge_graph import EntityExtractor
     from src.kg_builder.kg_writer import get_kg_writer
     
     crawler = get_news_crawler()
     writer = get_kg_writer()
+    extractor = EntityExtractor()
     
-    # 爬取新闻
-    news_list = crawler.crawl_all(max_count_per_source=20)
+    # 爬取新闻（过滤芯片/半导体相关）
+    news_list = crawler.crawl_all(max_count_per_source=20, filter_relevant=True)
     
     if not news_list:
         return {"message": "没有新新闻"}
     
-    # 抽取实体并写入图谱
     total_entities = 0
+    total_relations = 0
+    
     for news in news_list:
-        entities, relations = extract_entities_from_news({
-            "title": news.title,
-            "content": news.content
-        })
+        # 使用 LLM 抽取供应链实体和关系
+        text = f"标题: {news.title}\n内容: {news.content}"
+        entities, relations = extractor.extract(text)
         
         # 写入实体
         for entity in entities:
-            if entity.entity_type == "Company":
-                writer.write_company({"name": entity.name, **entity.properties})
-            elif entity.entity_type == "Sector":
-                writer.write_sector({"name": entity.name, **entity.properties})
+            etype = entity.entity_type
+            name = entity.name
+            props = entity.properties or {}
+            
+            if etype == "Company":
+                writer.write_company({"name": name, **props})
+            elif etype == "Product":
+                writer.write_product({"name": name, **props})
+            elif etype == "Foundry":
+                writer.write_foundry({"name": name, **props})
+            elif etype == "Material":
+                writer.write_material({"name": name, **props})
+            elif etype == "Location":
+                writer.write_location({"name": name, **props})
+            elif etype == "Sector":
+                writer.write_sector({"name": name, **props})
+            elif etype == "Event":
+                # Event 节点暂用 Company 的写入方式（都有 name）
+                pass
+        
+        # 写入关系（核心改进：不再丢弃关系）
+        for rel in relations:
+            try:
+                # 根据关系类型推断源/目标节点类型
+                source_type = _infer_node_type(rel.source, entities)
+                target_type = _infer_node_type(rel.target, entities)
+                
+                writer.write_relation(
+                    source=rel.source,
+                    target=rel.target,
+                    relation_type=rel.relation_type,
+                    source_type=source_type,
+                    target_type=target_type,
+                    properties=rel.properties
+                )
+                total_relations += 1
+            except Exception as e:
+                logger.warning(f"写入关系失败: {rel.source}-{rel.relation_type}->{rel.target}: {e}")
         
         total_entities += len(entities)
     
     return {
         "news_count": len(news_list),
-        "entities_extracted": total_entities
+        "entities_extracted": total_entities,
+        "relations_extracted": total_relations
     }
+
+
+def _infer_node_type(name: str, entities: list) -> str:
+    """根据实体列表推断节点类型"""
+    for e in entities:
+        if e.name == name:
+            return e.entity_type
+    # 默认推断
+    if "台积" in name or "中芯" in name or "三星" in name or "代工" in name:
+        return "Foundry"
+    if "光刻" in name or "硅片" in name or "光刻胶" in name:
+        return "Material"
+    if "GPU" in name or "CPU" in name or "芯片" in name:
+        return "Product"
+    return "Company"
 
 
 def task_update_stocks():

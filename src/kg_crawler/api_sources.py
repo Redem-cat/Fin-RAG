@@ -144,10 +144,45 @@ class AKShareSource:
             self.ak = None
             self.available = False
     
+    def _fallback_get_all_stocks(self) -> List[Dict]:
+        """备用：直接请求东方财富 delay 接口"""
+        import requests
+        url = (
+            "https://push2delay.eastmoney.com/api/qt/clist/get"
+            "?pn=1&pz=6000&po=1&np=1&fltt=2&invt=2&fid=f12"
+            "&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048"
+            "&fields=f12,f14,f2,f3,f5,f6"
+        )
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer": "https://quote.eastmoney.com/",
+        }
+        try:
+            r = requests.get(url, headers=headers, timeout=30)
+            data = r.json()
+            diff = data.get("data", {}).get("diff", [])
+            stocks = []
+            for item in diff:
+                code = str(item.get("f12", ""))
+                stocks.append({
+                    "code": code,
+                    "name": item.get("f14", ""),
+                    "market": self._get_market(code),
+                    "price": item.get("f2", 0),
+                    "change_pct": item.get("f3", 0),
+                    "volume": item.get("f5", 0),
+                    "amount": item.get("f6", 0),
+                })
+            logger.info(f"[Fallback] 获取到 {len(stocks)} 只 A 股")
+            return stocks
+        except Exception as e:
+            logger.error(f"[Fallback] 获取股票列表失败: {e}")
+            return []
+
     def get_all_stocks(self) -> List[Dict]:
         """获取所有 A 股上市公司列表"""
         if not self.available:
-            return []
+            return self._fallback_get_all_stocks()
         
         try:
             # 获取 A 股列表
@@ -169,8 +204,8 @@ class AKShareSource:
             return stocks
             
         except Exception as e:
-            logger.error(f"[AKShare] 获取股票列表失败: {e}")
-            return []
+            logger.error(f"[AKShare] 获取股票列表失败: {e}, 尝试备用接口...")
+            return self._fallback_get_all_stocks()
     
     def get_company_info(self, code: str) -> Optional[CompanyInfo]:
         """获取公司详细信息"""
@@ -198,10 +233,39 @@ class AKShareSource:
             logger.error(f"[AKShare] 获取公司 {code} 信息失败: {e}")
             return None
     
+    def _fallback_get_industries(self) -> List[SectorInfo]:
+        """备用：直接请求东方财富 delay 接口获取行业分类"""
+        import requests
+        url = (
+            "https://push2delay.eastmoney.com/api/qt/clist/get"
+            "?pn=1&pz=200&po=1&np=1&fltt=2&invt=2&fid=f3"
+            "&fs=m:90+t:2+f:!50&fields=f12,f14"
+        )
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer": "https://quote.eastmoney.com/",
+        }
+        try:
+            r = requests.get(url, headers=headers, timeout=30)
+            data = r.json()
+            diff = data.get("data", {}).get("diff", [])
+            sectors = []
+            for item in diff:
+                sectors.append(SectorInfo(
+                    name=item.get("f14", ""),
+                    code=item.get("f12", ""),
+                    description="申万行业分类"
+                ))
+            logger.info(f"[Fallback] 获取到 {len(sectors)} 个行业分类")
+            return sectors
+        except Exception as e:
+            logger.error(f"[Fallback] 获取行业分类失败: {e}")
+            return []
+
     def get_industry_classification(self) -> List[SectorInfo]:
         """获取申万行业分类"""
         if not self.available:
-            return []
+            return self._fallback_get_industries()
         
         try:
             # 获取申万行业分类
@@ -219,8 +283,8 @@ class AKShareSource:
             return sectors
             
         except Exception as e:
-            logger.error(f"[AKShare] 获取行业分类失败: {e}")
-            return []
+            logger.error(f"[AKShare] 获取行业分类失败: {e}, 尝试备用接口...")
+            return self._fallback_get_industries()
     
     def get_company_by_sector(self, sector_name: str) -> List[str]:
         """获取某行业的所有公司"""

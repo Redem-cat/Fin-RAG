@@ -5,7 +5,7 @@
 """
 import hashlib
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -92,6 +92,19 @@ class UserProfile(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     user = relationship("User", backref="profile")
+
+
+class SessionToken(Base):
+    """会话 Token 表，用于持久化登录状态"""
+    __tablename__ = "session_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
+
+    user = relationship("User", backref="session_tokens")
 
 
 # 初始化数据库
@@ -493,6 +506,94 @@ def needs_onboarding(user_id: int) -> bool:
     if not profile:
         return True
     return not profile["has_completed_onboarding"]
+
+
+# =========================
+# 会话 Token 管理（持久化登录）
+# =========================
+
+TOKEN_EXPIRE_DAYS = 7
+
+
+def create_session_token(user_id: int) -> str:
+    """
+    创建会话 Token，有效期 7 天
+
+    Returns:
+        token 字符串
+    """
+    init_db()
+    session = SessionLocal()
+    try:
+        # 删除该用户的旧 token
+        session.query(SessionToken).filter(SessionToken.user_id == user_id).delete()
+
+        # 创建新 token
+        token = secrets.token_urlsafe(32)
+        expires_at = datetime.now() + timedelta(days=TOKEN_EXPIRE_DAYS)
+
+        session_token = SessionToken(
+            user_id=user_id,
+            token=token,
+            expires_at=expires_at
+        )
+        session.add(session_token)
+        session.commit()
+
+        return token
+    finally:
+        session.close()
+
+
+def validate_session_token(token: str) -> Optional[Dict[str, Any]]:
+    """
+    验证会话 Token
+
+    Returns:
+        用户信息 dict，如果无效则返回 None
+    """
+    if not token:
+        return None
+
+    init_db()
+    session = SessionLocal()
+    try:
+        # 清理过期 token
+        session.query(SessionToken).filter(SessionToken.expires_at < datetime.now()).delete()
+        session.commit()
+
+        # 查找 token
+        st = session.query(SessionToken).filter(SessionToken.token == token).first()
+        if not st or st.expires_at < datetime.now():
+            return None
+
+        # 获取用户信息
+        user = session.query(User).filter(User.id == st.user_id).first()
+        if not user:
+            return None
+
+        return {
+            "id": user.id,
+            "username": user.username,
+            "created_at": user.created_at.isoformat() if user.created_at else None
+        }
+    finally:
+        session.close()
+
+
+def delete_session_token(token: str) -> bool:
+    """删除会话 Token（登出）"""
+    if not token:
+        return False
+
+    init_db()
+    session = SessionLocal()
+    try:
+        result = session.query(SessionToken).filter(SessionToken.token == token).delete()
+        session.commit()
+        return result > 0
+    finally:
+        session.close()
 
 
 if __name__ == "__main__":

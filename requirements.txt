@@ -19,8 +19,8 @@ elasticsearch>=8.11.0
 # 知识图谱
 neo4j>=5.15.0
 
-# LLM 客户端
-ollama>=0.4.6
+# LLM 客户端（已切换到 DeepSeek API，仅保留 langchain-ollama 用于 OllamaEmbeddings）
+# ollama>=0.4.6  # 已移除，对话模型改用 DeepSeek
 
 # Embedding
 sentence-transformers>=3.3.1

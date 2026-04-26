@@ -50,50 +50,61 @@ if res.body:
 # 🔹 处理文档
 # =========================
 print(f"Reading the PDFs in {base_path}/data")
+# 法规文档专用分割策略：
+# - chunk_size 1500 保证一个条款通常不会被截断
+# - 去掉 "\n" 分隔符，避免在条款中间分割
+# - 优先按段落(\n\n)和句子(。！？)分割
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=800, 
-    chunk_overlap=100,
-    separators=["\n\n", "\n", "。", "！", "？", "；", "：", "，", "、", " ", ""]
+    chunk_size=1500,
+    chunk_overlap=150,
+    separators=["\n\n", "。", "！", "？", "；", "\n", "：", "，", "、", " ", ""]
 )
 
 # Read the PDF and Markdown files and split into chunks
 converter = DocumentConverter()
 all_splits = []
 
+# 递归收集所有文件
+pdf_files = list(Path(f"{base_path}/data").rglob("*.pdf"))
+md_files = list(Path(f"{base_path}/data").rglob("*.md"))
+
+print(f"Found {len(pdf_files)} PDF files, {len(md_files)} Markdown files")
+
 # 处理 PDF 文件
-for file in glob.glob(f"{base_path}/data/*.pdf"):
-    print(f"Reading {file}")
-    docling_doc = converter.convert(file)
-
-    pages = len(docling_doc.pages) if hasattr(docling_doc, 'pages') else 1
-    print(f"Read {file} with {pages} pages")
-
-    markdown_text = docling_doc.export_to_markdown()
-    doc = Document(
-        page_content=markdown_text,
-        metadata={"source": file, "file_type": "pdf"}
-    )
-
-    chunks = text_splitter.split_documents([doc])
-    num_chunks = len(chunks)
-    print(f"Splitted in {num_chunks} chunks")
-    all_splits.append(chunks)
+for file in pdf_files:
+    file_str = str(file)
+    print(f"Reading {file_str}")
+    try:
+        docling_doc = converter.convert(file_str)
+        pages = len(docling_doc.pages) if hasattr(docling_doc, 'pages') else 1
+        print(f"Read {file_str} with {pages} pages")
+        markdown_text = docling_doc.export_to_markdown()
+        doc = Document(
+            page_content=markdown_text,
+            metadata={"source": file_str, "file_type": "pdf"}
+        )
+        chunks = text_splitter.split_documents([doc])
+        print(f"Splitted in {len(chunks)} chunks")
+        all_splits.append(chunks)
+    except Exception as e:
+        print(f"[WARN] Failed to process {file_str}: {e}")
 
 # 处理 Markdown 文件
-for file in glob.glob(f"{base_path}/data/*.md"):
-    print(f"Reading {file}")
-    with open(file, 'r', encoding='utf-8') as f:
-        content = f.read()
-
-    doc = Document(
-        page_content=content,
-        metadata={"source": file, "file_type": "markdown"}
-    )
-
-    chunks = text_splitter.split_documents([doc])
-    num_chunks = len(chunks)
-    print(f"Splitted in {num_chunks} chunks")
-    all_splits.append(chunks)
+for file in md_files:
+    file_str = str(file)
+    print(f"Reading {file_str}")
+    try:
+        with open(file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        doc = Document(
+            page_content=content,
+            metadata={"source": file_str, "file_type": "markdown"}
+        )
+        chunks = text_splitter.split_documents([doc])
+        print(f"Splitted in {len(chunks)} chunks")
+        all_splits.append(chunks)
+    except Exception as e:
+        print(f"[WARN] Failed to process {file_str}: {e}")
 
 # 合并所有分块
 all_chunks = []

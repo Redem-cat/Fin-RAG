@@ -98,7 +98,7 @@ class CitationTracker:
     
     def __init__(self, log_dir: str = None, max_records: int = 100):
         if log_dir is None:
-            log_dir = Path(__file__).parent.parent.parent / "data" / "citations"
+            log_dir = Path(__file__).parent.parent.parent / "memory" / "citations"
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
         

@@ -67,7 +67,7 @@ FinRAG-Advisor 基于多模态知识图谱增强的智能投顾与合规双模 R
 1. B站视频项目 - 简单的RAG系统接DeepSeek API做的智能图书问答管理系统
    - 问题：粗糙，检索效果不好
 
-2. ES检索项目 - 使用Elasticsearch作为检索，Ollama本地部署，
+2. ES检索项目 - 使用Elasticsearch作为检索，Ollama本地部署（现已改为DeepSeek API），
    采用BGE作为Embedding
 
 3. HuggingFace项目 - 使用意图识别，并有相关数据集
@@ -165,22 +165,20 @@ FinRAG-Advisor 基于多模态知识图谱增强的智能投顾与合规双模 R
 --------------------------------------------------------------------------------
 
 ## 问题描述
-刷新页面或切换 CHAT/EVAL 时，Ollama 和 Elasticsearch 连接没有正确关闭，
+刷新页面或切换 CHAT/EVAL 时，Elasticsearch 连接没有正确关闭，
 导致：
 1. 旧进程堆积，占用端口和内存
 2. 应用卡住无法响应
 3. 需要手动杀掉进程才能恢复
 
 ## 根本原因
-1. Ollama 的 HTTP 连接池没有正确关闭
-2. Elasticsearch 连接没有正确释放
-3. LangChain/Ollama 库的连接管理机制不完善
-4. Streamlit 的页面刷新机制（重新执行全部代码）与全局状态冲突
+1. Elasticsearch 连接没有正确释放
+2. Streamlit 的页面刷新机制（重新执行全部代码）与全局状态冲突
+3. 【已解决】Ollama 仅用于 Embedding 向量化，已通过延迟加载避免连接问题
 
 ## 当前尝试方案（效果不佳）
 1. 在 `src/rag.py` 中添加 `cleanup_resources()` 函数
    - 关闭 Elasticsearch 连接
-   - 清理 Ollama 客户端
    - 重置全局变量
 
 2. 在 `src/streamlit_app.py` 中添加页面切换清理逻辑
@@ -490,8 +488,8 @@ def _handle_investment_question(question, top_k):
     finance_trigger = get_finance_trigger()
     finance_context, finance_sources = finance_trigger.get_finance_context(question)
 
-    # 2. 使用LLM生成回答
-    llm = ChatOllama(model="my-qwen25:latest", temperature=0.7)
+    # 2. 使用 DeepSeek LLM 生成回答
+    llm = get_llm(temperature=0.7)
 
     if finance_context:
         prompt = f"""你是一位专业的投资顾问。请根据以下实时金融数据回答用户问题。
@@ -992,5 +990,57 @@ To Do list
 prompt可以在ModelFile里面设置
 
 example 本系统设计了一种基于事件驱动的量化交易模块，支持流式回测与实时性能评估。通过引入基准对比机制，实现策略收益与市场指数的动态对齐分析。同时，系统构建了支持条件单、止损单及TWAP执行策略的复杂订单管理模块，在考虑滑点与交易成本的前提下，提高了回测结果的真实性与可解释性。
+
+============================================================
+## 变更日志
+
+### 2026-04-24 高严重性Bug修复（6项）
+
+**修复1: 移除死代码 `_handle_investment_question` 分支** (`src/rag.py:1109`)
+- 问题：`use_rag` 在 `intent=="investment"` 时恒为 True，导致 `not use_rag` 恒为 False，
+  `_handle_investment_question` 永远不会被调用（死代码），且该函数缺少合规审查
+- 修复：移除不可达分支，纯投资问题通过正常 RAG 流程 + 金融触发器处理
+
+**修复2: 触发系统上下文注入 RAG prompt** (`src/rag.py`)
+- 问题：`ask_question()` 中触发系统获取的 `resset_context_for_answer` 和 `ml_context_for_answer`
+  未通过 LangGraph state 传递给 `generate()` 函数，导致触发系统获取的上下文丢失
+- 修复：
+  - 扩展 `State` TypedDict，增加 `resset_context` 和 `ml_context` 字段
+  - `graph.invoke()` 调用时传入触发系统上下文
+  - `generate()` 中优先使用 state 中的触发上下文，回退到关键词检测
+
+**修复3: LLM 和合规审查器双重初始化** (`src/rag.py:349-368`)
+- 问题：模块级别直接创建 `llm = ChatOllama(...)` 和 `compliance_checker = ComplianceChecker()`，
+  与延迟加载函数 `_get_llm()` 冲突，导致启动变慢且可能状态不一致
+- 修复：移除模块级别的即时初始化，保留 200 行区域的延迟声明 `llm = None` / `compliance_checker = None`
+
+**修复4: 多策略回测仅使用第一个槽位** (`src/multi_strategy.py:158`)
+- 问题：`run_simulation()` 中 `strategy` 参数硬编码为 `list(self.slots.values())[0].strategy_class`，
+  无论注册多少策略都只用第一个，未真正利用 AKQuant 的多策略能力
+- 修复：移除硬编码单策略参数，多策略通过 `config.strategies_by_slot` 传递，
+  仅在单策略时兼容设置 `strategy` 参数
+
+**修复5: `load_config` 未恢复 `strategy_class`** (`src/multi_strategy.py:385-391`)
+- 问题：`StrategySlot.to_dict()` 将 `strategy_class` 序列化为字符串（如 `"<class 'akquant.strategy.Momentum'>"`），
+  但 `load_config()` 重建 `StrategySlot` 时不恢复 `strategy_class`，导致加载的配置无法用于回测
+- 修复：
+  - 新增 `_resolve_strategy_class()` 静态方法，从序列化字符串中提取类名并尝试恢复
+  - `load_config()` 重建槽位时调用该方法恢复 `strategy_class`
+  - 恢复顺序：先查 akquant 模块，再查 src.quantitative 内置策略
+
+**修复6: LLM 触发器合并使用子串匹配** (`src/trigger_system.py:349`)
+- 问题：`existing.trigger_type in llm_result.trigger_type` 使用 Python `in` 运算符做子串匹配，
+  如 `trigger_type="quant"` 会被 `"quantitative"` 误匹配，导致错误合并
+- 修复：改为精确匹配 `existing.trigger_type == llm_result.trigger_type`
+
+**修复7: Windows 控制台 Unicode 编码错误** (`src/rag.py`, `src/streamlit_app.py`)
+- 问题：Windows 默认使用 cp1252 编码，中文 `print` 输出导致 `UnicodeEncodeError: 'charmap' codec can't encode characters`
+- 修复：在 `rag.py` 和 `streamlit_app.py` 顶部添加 `sys.stdout.reconfigure(encoding="utf-8", errors="replace")`，
+  强制使用 UTF-8 编码输出
+
+**修复8: 日志文件读取 FileNotFoundError** (`src/rag.py:459`)
+- 问题：`_vector_rerank()` 直接调用 `file_path.read_text()` 但未检查文件是否存在，
+  当日志文件在关键词过滤和向量重排之间被删除（竞态条件）时崩溃
+- 修复：在 `_vector_rerank()` 和 `_keyword_filter()` 中添加 `file_path.exists()` 检查和 `try/except (OSError, IOError)` 防御
 
 

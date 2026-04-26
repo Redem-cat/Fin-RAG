@@ -1,0 +1,16 @@
+{
+  "name": "l2",
+  "created_at": "2026-04-26T12:11:03.615341",
+  "strategy_type": "ml_lstm",
+  "model_type": "lstm",
+  "train_window": 50,
+  "test_window": 20,
+  "symbols": [
+    "sh000001"
+  ],
+  "final_cash": 100000.0,
+  "total_return_pct": 0.0,
+  "version": "0.2.2",
+  "file_size_mb": 0.2394704818725586,
+  "description": ""
+}

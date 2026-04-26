@@ -45,38 +45,58 @@ KG_MIN_CONFIDENCE = float(os.getenv("KG_MIN_CONFIDENCE", "0.7"))
 # 🔹 金融本体论定义
 # =========================
 class EntityType(Enum):
-    """实体类型枚举"""
-    COMPANY = "Company"           # 公司
-    PERSON = "Person"              # 人物
-    SECTOR = "Sector"             # 行业
-    ASSET = "Asset"               # 资产（股票、债券）
-    EVENT = "Event"               # 事件（财报、并购、政策）
-    INDICATOR = "Indicator"        # 指标（CPI、利率）
+    """实体类型枚举 - 金融领域芯片供应链"""
+    COMPANY = "Company"           # 公司（设计公司、整机厂、设备商）
+    PERSON = "Person"             # 人物
+    SECTOR = "Sector"             # 行业/概念板块
+    PRODUCT = "Product"           # 产品/部件（GPU/CPU/存储芯片/光刻机）
+    FOUNDRY = "Foundry"           # 代工厂/产线
+    MATERIAL = "Material"         # 原材料/设备（硅片/光刻胶/刻蚀机）
+    LOCATION = "Location"         # 地点（国家/城市/园区）
+    EVENT = "Event"               # 事件（停产/事故/政策）
+    ASSET = "Asset"               # 资产（股票）
+    INDICATOR = "Indicator"       # 指标
 
 
 class RelationType(Enum):
-    """关系类型枚举"""
-    # 公司关系
-    CEO_OF = "CEO_OF"
-    BELONGS_TO = "BELONGS_TO"           # 公司属于行业
-    COMPETES_WITH = "COMPETES_WITH"     # 竞争关系
-    PARTNER_OF = "PARTNER_OF"           # 合作关系
-    SUBSIDIARY_OF = "SUBSIDIARY_OF"     # 子公司关系
-    INVESTED_BY = "INVESTED_BY"         # 被投资
+    """关系类型枚举 - 芯片供应链"""
+    # 公司与产品
+    DESIGNS = "DESIGNS"               # (公司)-[设计]->(产品)
+    PURCHASES = "PURCHASES"           # (公司)-[采购]->(产品)
+    MANUFACTURES_FOR = "MANUFACTURES_FOR"  # (代工厂)-[代工]->(公司/产品)
 
-    # 资产关系
-    ISSUED_BY = "ISSUED_BY"             # 资产发行方
-    TRACKED_BY = "TRACKED_BY"           # 被指数追踪
+    # 公司与代工厂
+    OUTSOURCES_TO = "OUTSOURCES_TO"   # (公司)-[委托代工]->(代工厂)
+
+    # 依赖关系
+    DEPENDS_ON = "DEPENDS_ON"         # (代工厂)-[依赖]->(原材料/设备)
+    SUPPLIES = "SUPPLIES"             # (公司)-[供应]->(公司)
+
+    # 地点
+    LOCATED_IN = "LOCATED_IN"         # (代工厂/公司)-[位于]->(地点)
+
+    # 竞争
+    COMPETES_WITH = "COMPETES_WITH"   # (公司)-[竞争]->(公司)
+
+    # 行业归属
+    BELONGS_TO = "BELONGS_TO"         # (公司)-[属于]->(板块)
 
     # 事件影响
-    AFFECTED_BY = "AFFECTED_BY"         # 受影响
-    IMPACTS = "IMPACTS"                 # 影响
-    REPORTED = "REPORTED"               # 报告了
-    DRIVEN_BY = "DRIVEN_BY"            # 由...驱动
+    AFFECTED_BY = "AFFECTED_BY"
+    IMPACTS = "IMPACTS"
 
-    # 指标关系
-    MEASURED_BY = "MEASURED_BY"         # 由...衡量
-    CORRELATES_WITH = "CORRELATES_WITH" # 与...相关
+    # 资产关系（保留）
+    ISSUED_BY = "ISSUED_BY"
+
+    # 传统关系（兼容）
+    CEO_OF = "CEO_OF"
+    PARTNER_OF = "PARTNER_OF"
+    SUBSIDIARY_OF = "SUBSIDIARY_OF"
+    INVESTED_BY = "INVESTED_BY"
+    REPORTED = "REPORTED"
+    DRIVEN_BY = "DRIVEN_BY"
+    MEASURED_BY = "MEASURED_BY"
+    CORRELATES_WITH = "CORRELATES_WITH"
 
 
 # 实体类型中文映射
@@ -215,24 +235,27 @@ def get_neo4j_connection() -> Neo4jConnection:
 # =========================
 FINANCIAL_SCHEMA = """
 节点类型:
-- Company: 公司 (name, code, sector, market_cap, description)
-- Person: 人物 (name, title, company, biography)
-- Sector: 行业 (name, description, trend)
-- Asset: 资产 (name, code, type, price, currency)
+- Company: 公司 (name, code, sector, market_cap, country, description)
+- Product: 产品/部件 (name, type, 工艺节点, description)
+- Foundry: 代工厂/产线 (name, location, 工艺节点, 月产能)
+- Material: 原材料/设备 (name, type, supplier, description)
+- Location: 地点 (name, type, country)
+- Sector: 概念板块 (name, code, description)
 - Event: 事件 (name, type, date, impact, description)
-- Indicator: 经济指标 (name, value, unit, date, region)
+- Person: 人物 (name, title, company)
 
-关系类型:
-- (Company)-[:CEO_OF]->(Person)
-- (Company)-[:BELONGS_TO]->(Sector)
-- (Company)-[:COMPETES_WITH]->(Company)
-- (Company)-[:PARTNER_OF]->(Company)
-- (Company)-[:SUBSIDIARY_OF]->(Company)
-- (Company)-[:AFFECTED_BY]->(Event)
-- (Company)-[:REPORTED]->(Event)
-- (Asset)-[:ISSUED_BY]->(Company)
-- (Event)-[:IMPACTS]->(Sector)
-- (Indicator)-[:AFFECTS]->(Sector)
+关系类型（芯片供应链）:
+- (Company)-[:DESIGNS]->(Product)            公司设计某产品
+- (Company)-[:PURCHASES]->(Product)          公司采购某产品
+- (Company)-[:OUTSOURCES_TO {工艺节点, 占比}]->(Foundry)   委托代工
+- (Foundry)-[:MANUFACTURES_FOR {工艺节点}]->(Company/Product) 代工生产
+- (Foundry)-[:DEPENDS_ON {依赖程度, 是否有替代}]->(Material) 依赖材料/设备
+- (Foundry/Company)-[:LOCATED_IN]->(Location) 位于某地
+- (Company)-[:COMPETES_WITH {竞争领域}]->(Company) 竞争关系
+- (Company)-[:SUPPLIES]->(Company)           供应关系
+- (Company)-[:BELONGS_TO]->(Sector)          属于板块
+- (Company/Foundry)-[:AFFECTED_BY]->(Event)  受事件影响
+- (Asset)-[:ISSUED_BY]->(Company)            资产发行
 """
 
 
@@ -266,37 +289,56 @@ def create_schema_constraints() -> bool:
 # =========================
 # 🔹 实体/关系抽取
 # =========================
-EXTRACTION_PROMPT = """你是一个专业的金融知识图谱抽取系统。请从文本中抽取实体和关系。
+EXTRACTION_PROMPT = """你是一个专业的半导体/芯片供应链知识图谱抽取系统。请从文本中抽取实体和关系，用于金融领域的上下游风险分析。
 
-## 金融本体论
-节点类型: Company(公司), Person(人物), Sector(行业), Asset(资产), Event(事件), Indicator(指标)
+## 核心任务
+从新闻/公告中识别：哪些公司依赖哪些代工厂/原材料，哪些公司之间存在竞争/供应关系。
 
-关系类型:
-- CEO_OF: 公司CEO关系
-- BELONGS_TO: 归属关系
-- COMPETES_WITH: 竞争关系
-- AFFECTED_BY: 受影响
-- IMPACTS: 影响
-- REPORTED: 报告了
-- DRIVEN_BY: 由...驱动
-- ISSUED_BY: 发行
+## 本体论
+节点类型:
+- Company(公司): 芯片设计公司、整机厂（手机/汽车/服务器厂商）、设备商
+- Product(产品): 具体芯片产品（如"A100 GPU"、"麒麟9000"）、部件类型（"GPU/CPU/存储芯片/光刻机"）
+- Foundry(代工厂): 台积电、中芯国际、三星等，含工艺节点属性
+- Material(原材料/设备): 硅片、光刻胶、光刻机、特种气体
+- Location(地点): 国家、城市、园区（如"台湾台南"、"上海张江"）
+- Sector(板块): 概念板块（如"AI芯片"、"汽车芯片"）
+- Event(事件): 停产、事故、政策变化
+
+关系类型（重点抽取）:
+- DESIGNS: (公司)-[设计]->(产品) — 某公司设计某芯片
+- PURCHASES: (公司)-[采购]->(产品) — 某公司采购某芯片/部件
+- MANUFACTURES_FOR: (代工厂)-[代工]->(公司/产品) — 代工厂为某公司/产品生产
+- OUTSOURCES_TO: (公司)-[委托代工]->(代工厂) — 某公司委托某代工厂
+- DEPENDS_ON: (代工厂)-[依赖]->(原材料/设备) — 代工厂依赖某种材料/设备
+- LOCATED_IN: (代工厂/公司)-[位于]->(地点) — 位于某地
+- COMPETES_WITH: (公司)-[竞争]->(公司) — 同一细分领域竞争
+- SUPPLIES: (公司)-[供应]->(公司) — 上游供应商
+- BELONGS_TO: (公司)-[属于]->(板块) — 属于某概念板块
+- AFFECTED_BY: (公司/代工厂)-[受影响]->(事件)
+
+## 关系属性（如文本中有相关信息，务必抽取）
+- 工艺节点: "5nm"、"7nm"、"28nm"
+- 占比/依赖程度: "高"/"中"/"低"，或具体百分比
+- 时间: 关系开始/结束时间
+- 来源/置信度: 信息来源
 
 ## 输入文本
 {text}
 
 ## 要求
-1. 抽取所有金融相关的实体
-2. 识别实体之间的关系
-3. 输出标准 JSON 格式
+1. **只抽取与芯片/半导体/电子供应链相关的实体和关系**，忽略无关内容
+2. 优先抽取：代工关系、供应链依赖、竞争关系
+3. 关系属性尽量填充（工艺节点、占比、依赖程度）
+4. 输出标准 JSON 格式
 
 ## 输出格式
 ```json
 {{
     "entities": [
-        {{"name": "实体名", "type": "类型", "properties": {{"key": "value"}}}}
+        {{"name": "实体名", "type": "Company|Product|Foundry|Material|Location|Sector|Event", "properties": {{"key": "value"}}}}
     ],
     "relations": [
-        {{"source": "实体A", "type": "关系类型", "target": "实体B", "properties": {{}}}}
+        {{"source": "实体A", "type": "关系类型", "target": "实体B", "properties": {{"工艺节点": "5nm", "占比": "高", "时间": "2024-01"}}}}
     ]
 }}
 ```
@@ -311,13 +353,10 @@ class EntityExtractor:
         self.llm = None
 
     def _get_llm(self):
-        """延迟加载 LLM"""
+        """延迟加载 LLM（使用 DeepSeek API）"""
         if self.llm is None:
-            from langchain_ollama import ChatOllama
-            self.llm = ChatOllama(
-                model=os.getenv("OLLAMA_MODEL", "my-qwen25"),
-                temperature=0.1
-            )
+            from src.llm_client import get_llm
+            self.llm = get_llm(temperature=0.1)
         return self.llm
 
     def extract(self, text: str) -> Tuple[List[ExtractedEntity], List[ExtractedRelation]]:
@@ -381,19 +420,14 @@ class CypherQueryBuilder:
     def find_related_entities(entity_name: str, relation_type: str = None,
                               max_depth: int = 2) -> str:
         """
-        查找相关实体
-
-        Args:
-            entity_name: 实体名称
-            relation_type: 关系类型（可选）
-            max_depth: 最大跳数
-
-        Returns:
-            Cypher 查询语句
+        查找相关实体（支持模糊匹配）
         """
         if relation_type:
             return f"""
-            MATCH path = (start {{name: $entity}})-[r:{relation_type}*1..{max_depth}]->(end)
+            MATCH (start)
+            WHERE toLower(start.name) CONTAINS toLower($entity)
+               OR toLower($entity) CONTAINS toLower(start.name)
+            MATCH path = (start)-[r:{relation_type}*1..{max_depth}]->(end)
             RETURN path,
                    [n IN nodes(path) | {{name: n.name, type: labels(n)[0], properties: properties(n)}}] AS nodes,
                    [r IN relationships(path) | {{type: type(r), properties: properties(r)}}] AS edges
@@ -401,7 +435,10 @@ class CypherQueryBuilder:
             """
         else:
             return f"""
-            MATCH path = (start {{name: $entity}})-[r*1..{max_depth}]->(end)
+            MATCH (start)
+            WHERE toLower(start.name) CONTAINS toLower($entity)
+               OR toLower($entity) CONTAINS toLower(start.name)
+            MATCH path = (start)-[r*1..{max_depth}]->(end)
             RETURN path,
                    [n IN nodes(path) | {{name: n.name, type: labels(n)[0], properties: properties(n)}}] AS nodes,
                    [r IN relationships(path) | {{type: type(r), properties: properties(r)}}] AS edges
@@ -419,9 +456,12 @@ class CypherQueryBuilder:
 
     @staticmethod
     def find_affected_entities(event_name: str) -> str:
-        """查找受事件影响的实体"""
+        """查找受事件影响的实体（支持模糊匹配）"""
         return """
-        MATCH (e:Event {name: $event_name})-[r]-(affected)
+        MATCH (e:Event)
+        WHERE toLower(e.name) CONTAINS toLower($event_name)
+           OR toLower($event_name) CONTAINS toLower(e.name)
+        MATCH (e)-[r]-(affected)
         RETURN e.name AS event,
                type(r) AS relation,
                labels(affected)[0] AS entity_type,
@@ -431,9 +471,12 @@ class CypherQueryBuilder:
 
     @staticmethod
     def find_company_relationships(company_name: str) -> str:
-        """查找公司关系网络"""
+        """查找公司关系网络（支持模糊匹配）"""
         return """
-        MATCH (c:Company {name: $company})-[r]-(other)
+        MATCH (c:Company)
+        WHERE toLower(c.name) CONTAINS toLower($company)
+           OR toLower($company) CONTAINS toLower(c.name)
+        MATCH (c)-[r]-(other)
         RETURN c.name AS company,
                type(r) AS relation_type,
                labels(other)[0] AS related_type,
@@ -443,9 +486,14 @@ class CypherQueryBuilder:
 
     @staticmethod
     def find_impact_chain(start_entity: str, end_entity: str, max_hops: int = 3) -> str:
-        """查找影响链"""
+        """查找影响链（支持模糊匹配）"""
         return f"""
-        MATCH path = (start {{name: $start}})-[r*1..{max_hops}]-(end {{name: $end}})
+        MATCH (start), (end)
+        WHERE toLower(start.name) CONTAINS toLower($start)
+           OR toLower($start) CONTAINS toLower(start.name)
+        WHERE toLower(end.name) CONTAINS toLower($end)
+           OR toLower($end) CONTAINS toLower(end.name)
+        MATCH path = (start)-[r*1..{max_hops}]-(end)
         WHERE all(rel IN relationships(path) WHERE type(rel) IN ['AFFECTED_BY', 'IMPACTS', 'DRIVEN_BY', 'BELONGS_TO'])
         RETURN path,
                [n IN nodes(path) | n.name] AS chain,
@@ -455,9 +503,12 @@ class CypherQueryBuilder:
 
     @staticmethod
     def find_sector_companies(sector_name: str) -> str:
-        """查找行业内的公司"""
+        """查找行业/板块内的公司（支持模糊匹配）"""
         return """
-        MATCH (s:Sector {name: $sector})<-[:BELONGS_TO]-(c:Company)
+        MATCH (s:Sector)
+        WHERE toLower(s.name) CONTAINS toLower($sector)
+           OR toLower($sector) CONTAINS toLower(s.name)
+        MATCH (s)<-[:BELONGS_TO]-(c:Company)
         RETURN c.name AS company, c.code AS code, c.market_cap AS market_cap
         ORDER BY c.market_cap DESC
         """
@@ -473,6 +524,69 @@ class CypherQueryBuilder:
                labels(e)[0] AS type,
                properties(e) AS properties
         LIMIT {limit}
+        """
+
+    # =========================
+    # 芯片供应链专用查询
+    # =========================
+
+    @staticmethod
+    def find_supply_chain(company_name: str) -> str:
+        """查询某公司的完整供应链（上游代工厂 + 下游客户）"""
+        return """
+        MATCH (c:Company)
+        WHERE toLower(c.name) CONTAINS toLower($company)
+           OR toLower($company) CONTAINS toLower(c.name)
+        OPTIONAL MATCH upstream = (c)-[:OUTSOURCES_TO]->(f:Foundry)-[:DEPENDS_ON]->(m:Material)
+        OPTIONAL MATCH downstream = (customer:Company)-[:PURCHASES]->(p:Product)<-[:DESIGNS]-(c)
+        RETURN c.name AS company,
+               collect(DISTINCT {foundry: f.name, material: m.name, relation: '上游依赖'}) AS upstream,
+               collect(DISTINCT {customer: customer.name, product: p.name, relation: '下游客户'}) AS downstream
+        """
+
+    @staticmethod
+    def find_risk_impact(foundry_name: str) -> str:
+        """查询代工厂停产/事故影响的上市公司"""
+        return """
+        MATCH (f:Foundry)
+        WHERE toLower(f.name) CONTAINS toLower($foundry)
+           OR toLower($foundry) CONTAINS toLower(f.name)
+        OPTIONAL MATCH (f)<-[:OUTSOURCES_TO]-(c:Company)
+        OPTIONAL MATCH (f)-[:DEPENDS_ON]->(m:Material)
+        OPTIONAL MATCH (c)-[:DESIGNS]->(p:Product)<-[:PURCHASES]-(customer:Company)
+        RETURN f.name AS foundry,
+               collect(DISTINCT {company: c.name, code: c.code, relation: '委托代工'}) AS affected_designers,
+               collect(DISTINCT {material: m.name, relation: '依赖材料'}) AS dependent_materials,
+               collect(DISTINCT {customer: customer.name, product: p.name, relation: '下游客户'}) AS downstream_customers
+        """
+
+    @staticmethod
+    def find_competitors(company_name: str) -> str:
+        """查询某公司的竞争对手（同一细分领域）"""
+        return """
+        MATCH (c:Company)
+        WHERE toLower(c.name) CONTAINS toLower($company)
+           OR toLower($company) CONTAINS toLower(c.name)
+        OPTIONAL MATCH (c)-[r:COMPETES_WITH]-(competitor:Company)
+        OPTIONAL MATCH (c)-[:BELONGS_TO]->(s:Sector)<-[:BELONGS_TO]-(peer:Company)
+        WHERE peer <> c
+        RETURN c.name AS company,
+               collect(DISTINCT {name: competitor.name, field: r.竞争领域, relation: '直接竞争'}) AS direct_competitors,
+               collect(DISTINCT {name: peer.name, sector: s.name, relation: '同板块'}) AS peer_companies
+        """
+
+    @staticmethod
+    def find_foundries_by_process(process_node: str) -> str:
+        """查询拥有特定工艺节点的代工厂"""
+        return """
+        MATCH (f:Foundry)
+        WHERE toLower(f.工艺节点) CONTAINS toLower($process)
+           OR toLower($process) CONTAINS toLower(f.工艺节点)
+        RETURN f.name AS foundry,
+               f.location AS location,
+               f.工艺节点 AS process_node,
+               f.月产能 AS capacity
+        ORDER BY f.月产能 DESC
         """
 
 
@@ -1016,6 +1130,116 @@ def check_kg_status() -> Tuple[bool, str]:
 
     except Exception as e:
         return False, f"检查失败: {e}"
+
+
+# =========================
+# 🔹 可视化
+# =========================
+NODE_COLORS = {
+    "Company": "#3b82f6",    # 蓝色
+    "Sector": "#10b981",     # 绿色
+    "Product": "#f59e0b",    # 橙色
+    "Foundry": "#ef4444",    # 红色
+    "Material": "#8b5cf6",   # 紫色
+    "Location": "#6b7280",   # 灰色
+    "Event": "#eab308",      # 黄色
+    "Person": "#ec4899",     # 粉色
+    "Asset": "#14b8a6",      # 青色
+    "Indicator": "#f97316",  # 深橙
+}
+
+
+def visualize_kg(max_nodes: int = 500, focus_entity: str = None) -> str:
+    """
+    生成知识图谱可视化 HTML（Pyvis）
+
+    Args:
+        max_nodes: 最大节点数
+        focus_entity: 聚焦某个实体（只显示其 N 跳邻居）
+
+    Returns:
+        HTML 字符串
+    """
+    from pyvis.network import Network
+
+    conn = get_neo4j_connection()
+    net = Network(height="600px", width="100%", bgcolor="#ffffff", font_color="#333333")
+    net.barnes_hut(gravity=-8000, central_gravity=0.3, spring_length=150)
+
+    # 获取节点
+    if focus_entity:
+        node_query = """
+        MATCH path = (focus)-[*1..2]-(neighbor)
+        WHERE toLower(focus.name) CONTAINS toLower($name)
+           OR toLower($name) CONTAINS toLower(focus.name)
+        WITH focus, neighbor
+        LIMIT $limit
+        RETURN DISTINCT labels(focus)[0] AS label, focus.name AS name, elementId(focus) AS nid
+        UNION
+        RETURN DISTINCT labels(neighbor)[0] AS label, neighbor.name AS name, elementId(neighbor) AS nid
+        """
+        node_results = conn.execute_query(node_query, {"name": focus_entity, "limit": max_nodes // 2})
+    else:
+        node_query = """
+        MATCH (n)
+        RETURN labels(n)[0] AS label, n.name AS name, elementId(n) AS nid
+        LIMIT $limit
+        """
+        node_results = conn.execute_query(node_query, {"limit": max_nodes})
+
+    added_nodes = set()
+    for row in node_results:
+        nid = row.get("nid")
+        name = row.get("name", "")
+        label = row.get("label", "Unknown")
+        if not name or nid in added_nodes:
+            continue
+        color = NODE_COLORS.get(label, "#9ca3af")
+        net.add_node(
+            n_id=nid,
+            label=name,
+            title=f"{label}: {name}",
+            color=color,
+            size=25 if label == "Company" else 18,
+            font={"size": 14 if label == "Company" else 12}
+        )
+        added_nodes.add(nid)
+
+    # 获取关系（只获取已添加节点之间的关系）
+    if added_nodes:
+        rel_query = """
+        MATCH (a)-[r]->(b)
+        WHERE elementId(a) IN $node_ids AND elementId(b) IN $node_ids
+        RETURN elementId(a) AS src, elementId(b) AS dst, type(r) AS rel_type, properties(r) AS props
+        LIMIT 2000
+        """
+        rel_results = conn.execute_query(rel_query, {"node_ids": list(added_nodes)})
+        for row in rel_results:
+            src = row.get("src")
+            dst = row.get("dst")
+            rel_type = row.get("rel_type", "")
+            if src in added_nodes and dst in added_nodes:
+                net.add_edge(src, dst, title=rel_type, label=rel_type, arrows="to")
+
+    # 配置选项
+    net.set_options("""
+    {
+      "physics": {
+        "enabled": true,
+        "barnesHut": {
+          "gravitationalConstant": -8000,
+          "centralGravity": 0.3,
+          "springLength": 150
+        }
+      },
+      "interaction": {
+        "hover": true,
+        "tooltipDelay": 200
+      }
+    }
+    """)
+
+    return net.generate_html()
 
 
 if __name__ == "__main__":

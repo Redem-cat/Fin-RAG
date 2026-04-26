@@ -1,0 +1,709 @@
+[
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T11:17:00.861601",
+    "elapsed_seconds": 0.56,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T11:17:00.902181",
+    "elapsed_seconds": 0.54,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T11:17:00.857078",
+    "elapsed_seconds": 0.58,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T11:17:00.970185",
+    "elapsed_seconds": 0.51,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T11:17:01.056294",
+    "elapsed_seconds": 0.55,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T11:17:01.063910",
+    "elapsed_seconds": 0.55,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T11:17:01.155636",
+    "elapsed_seconds": 0.52,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T11:17:01.352923",
+    "elapsed_seconds": 0.56,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T11:17:01.470243",
+    "elapsed_seconds": 0.5,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T11:17:01.446368",
+    "elapsed_seconds": 0.55,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "update_sectors",
+    "start_time": "2026-04-26T11:17:29.853535",
+    "elapsed_seconds": 7.28,
+    "status": "success",
+    "result": "{'sectors_imported': 100}"
+  },
+  {
+    "task": "update_sectors",
+    "start_time": "2026-04-26T11:17:31.107651",
+    "elapsed_seconds": 6.66,
+    "status": "success",
+    "result": "{'sectors_imported': 100}"
+  },
+  {
+    "task": "update_sectors",
+    "start_time": "2026-04-26T11:17:30.366706",
+    "elapsed_seconds": 7.51,
+    "status": "success",
+    "result": "{'sectors_imported': 100}"
+  },
+  {
+    "task": "update_sectors",
+    "start_time": "2026-04-26T11:17:31.383933",
+    "elapsed_seconds": 7.05,
+    "status": "success",
+    "result": "{'sectors_imported': 100}"
+  },
+  {
+    "task": "update_sectors",
+    "start_time": "2026-04-26T11:17:32.066415",
+    "elapsed_seconds": 6.66,
+    "status": "success",
+    "result": "{'sectors_imported': 100}"
+  },
+  {
+    "task": "update_sectors",
+    "start_time": "2026-04-26T11:17:32.600485",
+    "elapsed_seconds": 6.67,
+    "status": "success",
+    "result": "{'sectors_imported': 100}"
+  },
+  {
+    "task": "update_sectors",
+    "start_time": "2026-04-26T11:17:31.767140",
+    "elapsed_seconds": 7.72,
+    "status": "success",
+    "result": "{'sectors_imported': 100}"
+  },
+  {
+    "task": "update_sectors",
+    "start_time": "2026-04-26T11:17:33.159556",
+    "elapsed_seconds": 6.45,
+    "status": "success",
+    "result": "{'sectors_imported': 100}"
+  },
+  {
+    "task": "update_sectors",
+    "start_time": "2026-04-26T11:17:32.594994",
+    "elapsed_seconds": 7.09,
+    "status": "success",
+    "result": "{'sectors_imported': 100}"
+  },
+  {
+    "task": "update_sectors",
+    "start_time": "2026-04-26T11:17:33.700163",
+    "elapsed_seconds": 6.78,
+    "status": "success",
+    "result": "{'sectors_imported': 100}"
+  },
+  {
+    "task": "update_sectors",
+    "start_time": "2026-04-26T11:17:34.478854",
+    "elapsed_seconds": 6.61,
+    "status": "success",
+    "result": "{'sectors_imported': 100}"
+  },
+  {
+    "task": "update_sectors",
+    "start_time": "2026-04-26T11:17:33.581074",
+    "elapsed_seconds": 7.55,
+    "status": "success",
+    "result": "{'sectors_imported': 100}"
+  },
+  {
+    "task": "update_sectors",
+    "start_time": "2026-04-26T11:17:34.731123",
+    "elapsed_seconds": 6.73,
+    "status": "success",
+    "result": "{'sectors_imported': 100}"
+  },
+  {
+    "task": "update_sectors",
+    "start_time": "2026-04-26T11:17:35.858371",
+    "elapsed_seconds": 6.4,
+    "status": "success",
+    "result": "{'sectors_imported': 100}"
+  },
+  {
+    "task": "update_sectors",
+    "start_time": "2026-04-26T11:17:35.855096",
+    "elapsed_seconds": 6.43,
+    "status": "success",
+    "result": "{'sectors_imported': 100}"
+  },
+  {
+    "task": "update_stocks",
+    "start_time": "2026-04-26T11:19:11.451293",
+    "elapsed_seconds": 5.94,
+    "status": "success",
+    "result": "{'companies_imported': 100, 'errors': 0}"
+  },
+  {
+    "task": "update_stocks",
+    "start_time": "2026-04-26T11:19:12.007286",
+    "elapsed_seconds": 6.65,
+    "status": "success",
+    "result": "{'companies_imported': 100, 'errors': 0}"
+  },
+  {
+    "task": "update_stocks",
+    "start_time": "2026-04-26T11:19:14.078793",
+    "elapsed_seconds": 6.63,
+    "status": "success",
+    "result": "{'companies_imported': 100, 'errors': 0}"
+  },
+  {
+    "task": "update_stocks",
+    "start_time": "2026-04-26T11:19:15.277658",
+    "elapsed_seconds": 5.95,
+    "status": "success",
+    "result": "{'companies_imported': 100, 'errors': 0}"
+  },
+  {
+    "task": "update_stocks",
+    "start_time": "2026-04-26T11:19:15.633500",
+    "elapsed_seconds": 6.79,
+    "status": "success",
+    "result": "{'companies_imported': 100, 'errors': 0}"
+  },
+  {
+    "task": "update_stocks",
+    "start_time": "2026-04-26T11:19:16.671989",
+    "elapsed_seconds": 5.86,
+    "status": "success",
+    "result": "{'companies_imported': 100, 'errors': 0}"
+  },
+  {
+    "task": "update_stocks",
+    "start_time": "2026-04-26T11:19:16.499854",
+    "elapsed_seconds": 6.89,
+    "status": "success",
+    "result": "{'companies_imported': 100, 'errors': 0}"
+  },
+  {
+    "task": "update_stocks",
+    "start_time": "2026-04-26T11:19:16.719277",
+    "elapsed_seconds": 7.03,
+    "status": "success",
+    "result": "{'companies_imported': 100, 'errors': 0}"
+  },
+  {
+    "task": "update_stocks",
+    "start_time": "2026-04-26T11:19:17.248714",
+    "elapsed_seconds": 6.51,
+    "status": "success",
+    "result": "{'companies_imported': 100, 'errors': 0}"
+  },
+  {
+    "task": "update_stocks",
+    "start_time": "2026-04-26T11:19:17.118662",
+    "elapsed_seconds": 6.82,
+    "status": "success",
+    "result": "{'companies_imported': 100, 'errors': 0}"
+  },
+  {
+    "task": "update_stocks",
+    "start_time": "2026-04-26T11:19:17.763291",
+    "elapsed_seconds": 6.3,
+    "status": "success",
+    "result": "{'companies_imported': 100, 'errors': 0}"
+  },
+  {
+    "task": "update_stocks",
+    "start_time": "2026-04-26T11:19:17.695240",
+    "elapsed_seconds": 6.73,
+    "status": "success",
+    "result": "{'companies_imported': 100, 'errors': 0}"
+  },
+  {
+    "task": "update_stocks",
+    "start_time": "2026-04-26T11:19:17.222898",
+    "elapsed_seconds": 7.5,
+    "status": "success",
+    "result": "{'companies_imported': 100, 'errors': 0}"
+  },
+  {
+    "task": "update_stocks",
+    "start_time": "2026-04-26T11:19:18.288775",
+    "elapsed_seconds": 6.75,
+    "status": "success",
+    "result": "{'companies_imported': 100, 'errors': 0}"
+  },
+  {
+    "task": "update_stocks",
+    "start_time": "2026-04-26T11:19:18.835986",
+    "elapsed_seconds": 6.53,
+    "status": "success",
+    "result": "{'companies_imported': 100, 'errors': 0}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T12:17:02.743608",
+    "elapsed_seconds": 0.43,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T12:17:02.812843",
+    "elapsed_seconds": 0.39,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T12:17:02.842727",
+    "elapsed_seconds": 0.4,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T12:17:02.873649",
+    "elapsed_seconds": 0.42,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T12:17:02.889174",
+    "elapsed_seconds": 0.46,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T12:17:03.058580",
+    "elapsed_seconds": 0.44,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T12:17:03.120733",
+    "elapsed_seconds": 0.41,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.024846",
+    "elapsed_seconds": 0.41,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.027380",
+    "elapsed_seconds": 0.46,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.035034",
+    "elapsed_seconds": 0.47,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.113241",
+    "elapsed_seconds": 0.42,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.130185",
+    "elapsed_seconds": 0.48,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.149345",
+    "elapsed_seconds": 0.47,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.147825",
+    "elapsed_seconds": 0.48,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.133192",
+    "elapsed_seconds": 0.51,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.260020",
+    "elapsed_seconds": 0.4,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.191326",
+    "elapsed_seconds": 0.5,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.284558",
+    "elapsed_seconds": 0.43,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.349843",
+    "elapsed_seconds": 0.44,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.354307",
+    "elapsed_seconds": 0.44,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.346724",
+    "elapsed_seconds": 0.47,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.407021",
+    "elapsed_seconds": 0.45,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.350471",
+    "elapsed_seconds": 0.51,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.340312",
+    "elapsed_seconds": 0.53,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.411087",
+    "elapsed_seconds": 0.49,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.460683",
+    "elapsed_seconds": 0.49,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T13:17:05.503226",
+    "elapsed_seconds": 0.44,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T14:17:06.802005",
+    "elapsed_seconds": 0.4,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T14:17:06.784468",
+    "elapsed_seconds": 0.43,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T14:17:06.877872",
+    "elapsed_seconds": 0.41,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T14:17:06.872573",
+    "elapsed_seconds": 0.42,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T14:17:06.905643",
+    "elapsed_seconds": 0.4,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T14:17:06.999102",
+    "elapsed_seconds": 0.41,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T14:17:07.110565",
+    "elapsed_seconds": 0.4,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T14:17:07.079354",
+    "elapsed_seconds": 0.44,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T14:17:07.142134",
+    "elapsed_seconds": 0.41,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.493207",
+    "elapsed_seconds": 0.4,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.519758",
+    "elapsed_seconds": 0.46,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.513974",
+    "elapsed_seconds": 0.48,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.535208",
+    "elapsed_seconds": 0.47,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.596499",
+    "elapsed_seconds": 0.47,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.659501",
+    "elapsed_seconds": 0.54,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.687388",
+    "elapsed_seconds": 0.51,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.738816",
+    "elapsed_seconds": 0.49,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.737794",
+    "elapsed_seconds": 0.49,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.760534",
+    "elapsed_seconds": 0.5,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.787368",
+    "elapsed_seconds": 0.48,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.730222",
+    "elapsed_seconds": 0.54,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.814775",
+    "elapsed_seconds": 0.48,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.814775",
+    "elapsed_seconds": 0.48,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.746468",
+    "elapsed_seconds": 0.56,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.823175",
+    "elapsed_seconds": 0.49,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.844820",
+    "elapsed_seconds": 0.51,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.831561",
+    "elapsed_seconds": 0.52,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.848229",
+    "elapsed_seconds": 0.54,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.852041",
+    "elapsed_seconds": 0.54,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.835629",
+    "elapsed_seconds": 0.57,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.845776",
+    "elapsed_seconds": 0.56,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.894515",
+    "elapsed_seconds": 0.52,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  },
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.893083",
+    "elapsed_seconds": 0.52,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  }
+]  {
+    "task": "crawl_news",
+    "start_time": "2026-04-26T15:17:08.893083",
+    "elapsed_seconds": 0.52,
+    "status": "success",
+    "result": "{'message': '没有新新闻'}"
+  }
+]

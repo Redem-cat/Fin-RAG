@@ -91,13 +91,10 @@ class IntentClassifier:
         self.llm = None
         
     def _get_llm(self):
-        """延迟加载LLM"""
+        """延迟加载 LLM（使用 DeepSeek API）"""
         if self.llm is None:
-            from langchain_ollama import ChatOllama
-            self.llm = ChatOllama(
-                model="my-qwen25:latest",
-                temperature=0.1
-            )
+            from src.llm_client import get_llm
+            self.llm = get_llm(temperature=0.1)
         return self.llm
     
     def classify(self, question: str) -> Tuple[Intent, str]:

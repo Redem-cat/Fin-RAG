@@ -153,11 +153,8 @@ class EntityExtractor:
         """
         if self.llm is None:
             try:
-                from langchain_ollama import ChatOllama
-                self.llm = ChatOllama(
-                    model=os.getenv("OLLAMA_MODEL", "my-qwen25"),
-                    temperature=0.1
-                )
+                from src.llm_client import get_llm
+                self.llm = get_llm(temperature=0.1)
             except Exception as e:
                 logger.warning(f"LLM 加载失败: {e}")
                 return [], []
