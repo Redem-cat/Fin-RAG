@@ -1043,4 +1043,99 @@ example 本系统设计了一种基于事件驱动的量化交易模块，支持
   当日志文件在关键词过滤和向量重排之间被删除（竞态条件）时崩溃
 - 修复：在 `_vector_rerank()` 和 `_keyword_filter()` 中添加 `file_path.exists()` 检查和 `try/except (OSError, IOError)` 防御
 
+### 2026-04-26 回测与数据模块Bug修复（9项）
+
+**修复1: quantitative.py SyntaxError 缩进错误** (`src/quantitative.py:443`)
+- 问题：移除 `benchmark` 传参时误将 `try` 块内的策略创建和参数构建代码缩进丢失，
+  导致代码跑到 `try` 块外部，Python 报 `expected 'except' or 'finally' block`
+- 修复：将创建策略类、注入 symbol、构建参数的代码重新缩进回 `try` 块内部
+
+**修复2: 指标表格 PyArrow 序列化崩溃** (`src/streamlit_app.py:1839`)
+- 问题：`st.dataframe` 显示指标表格时，`数值` 列混入了字符串和 float（如 `"总交易次数": 42.0`），
+  PyArrow 先按字符串推断，遇到 float 时抛出 `Expected bytes, got a 'float' object`
+- 修复：将 `"总交易次数"` 统一转换为字符串 `str(int(...))`，并给表格和报告添加 `try/except` 防护
+
+**修复3: 多策略回测 Strategy must be provided** (`src/multi_strategy.py:158`)
+- 问题：AKQuant 的 `run_backtest` 始终要求提供 `strategy` 主策略参数，即使使用 `strategies_by_slot` 也不能为 None。
+  原代码仅在单槽位时传 `strategy`，多槽位时只传 `config` 导致报错
+- 修复：始终将第一个槽位设为主策略传给 `strategy` 参数，其余槽位通过 `strategies_by_slot` 传递，避免重复
+
+**修复4: 多策略 max_order_size 过小导致 0 成交** (`src/streamlit_app.py:1563`, `src/multi_strategy.py:145`)
+- 问题：策略里 `self.buy(..., quantity=100)` 写死 100 股，但多策略模拟盘默认 `最大下单量=10`，
+  AKQuant 风控将超出订单全部拒绝，导致 trades=0、return=0%
+- 修复：UI 默认值改为 100，运行时自动将 `max_order_size` 兜底到至少 100
+
+**修复5: 快照恢复默认使用 MOCK 数据** (`src/streamlit_app.py:1452`)
+- 问题：恢复快照时"新数据源"默认选中"模拟数据 MOCK"，随机数据上策略很难找到有效信号，
+  导致恢复后 Phase 2 没有新交易，指标全为 0
+- 修复：移除 MOCK 选项，默认直接使用 AKShare 真实股票数据
+
+**修复6: 指数代码长度判断错误** (`src/streamlit_app.py:1666`)
+- 问题：指数代码长度判断为 `== 8`，但用户输入 `sh00300`（7位）时被误判为个股，
+  走 `stock_zh_a_daily` 接口导致 `KeyError: 'date'`
+- 修复：长度判断放宽为 `in (7, 8)`，并在数据获取失败时抛出友好提示
+
+**修复7: 策略下单量过大被风控拒绝** (`src/quantitative.py:227`)
+- 问题：`quantity=100` 对个股（约10元）刚好合适，但对指数（如 sh000300 约3500点）
+  需要 35 万保证金，远超默认 10 万初始资金，所有订单被风控拒绝
+- 修复：将所有策略的 `quantity=100` 改为 `quantity=1`，兼顾个股和指数
+
+**修复8: run_backtest 缺少 A 股 T+1 配置** (`src/quantitative.py:448`)
+- 问题：`run_backtest` 未传入 `t_plus_one=True`，AKQuant 默认走美股 T+0 模式，
+  A 股数据在该模式下风控逻辑不同，导致订单被静默拒绝
+- 修复：补充 `t_plus_one=True`、`stamp_tax_rate=0.001`、`transfer_fee_rate=0.00001`
+
+**修复9: 东方财富爬虫 API 返回空数据** (`src/kg_crawler/news_crawler.py:158`)
+- 问题：东方财富快讯 API 现在强制要求 `req_trace` 参数，缺失时返回 `Required String parameter 'req_trace' is not present`，
+  导致爬取到 0 条新闻
+- 修复：请求参数中加上 `req_trace=str(int(time.time() * 1000))`
+
+### 已知未修复问题（Known Bugs / TODO）
+
+**Bug 1: ML 策略选择 LSTM 时收益为 0** (`src/ml_strategy.py`)
+- 现象：量化回测页面选择 LSTM 深度学习策略，回测完成后 TOTAL RETURN、SHARPE 等指标均为 0，交易次数为 0
+- 根因推测：LSTM 策略的 `on_bar` 信号生成逻辑或模型预测结果未正确触发买卖条件，
+  也可能与特征工程、数据预处理不匹配有关
+- 状态：待排查
+
+**Bug 2: 部分策略在特定标的上收益为 0**
+- 现象：选择某些策略（如布林带）搭配特定股票（如比亚迪 sz002594）时，回测结果全为 0
+- 根因推测：策略信号触发频率过低，或价格数据与策略参数（如布林带窗口）不匹配导致无交易
+- 状态：待排查
+
+**Bug 3: 股票代码格式错误时缺少友好提示** (`src/streamlit_app.py`)
+- 现象：用户在输入框中填入格式错误的股票代码（如 `sh00300` 少一位、`600000` 缺少前缀），
+  系统直接带入运行，导致 AKShare 接口报错（如 `KeyError: 'date'`）
+- 期望：在点击"运行回测"前进行格式校验，给出明确提示（如"沪深300指数代码应为 sh000300"）
+- 状态：待实现
+
+**Bug 4: 知识图谱更新数据量过少** (`src/kg_crawler/`)
+- 现象：KG 爬虫运行后经常只更新到极少量的节点/关系，有时甚至为 0
+- 根因推测：
+  1. 爬虫过滤条件过于严格（如只保留芯片/半导体关键词）
+  2. 去重机制导致新数据被跳过
+  3. 数据源本身返回空结果（如东方财富 API 参数变更）
+- 状态：待优化
+
+**Bug 5: 新闻爬虫频率过高且经常返回 0 条** (`src/kg_crawler/scheduler.py`)
+- 现象：调度器每过几十分钟就触发一次爬虫任务，频繁运行但经常爬取到 0 条新闻
+- 根因：
+  1. 调度间隔配置过短
+  2. 东方财富 API 因缺少 `req_trace` 参数已修复，但新浪财经 API 也可能存在类似问题
+  3. 历史去重缓存导致新数据被过滤
+- 状态：需调整调度策略，增加指数退避和失败重试机制
+
+**待验证功能: 大模型自主 Function Call** (`src/agent.py`, `src/intent_classifier.py`)
+- 说明：系统已预留大模型自主调用各功能模块（如量化回测、锐思数据查询、知识图谱检索）的接口，
+  但尚未经过完整端到端验证
+- 状态：待测试验证
+
+**备注**：以下功能已规划但未实现，不在本次修复范围内：
+- OCR 多模态文档解析（年报表格图片识别）
+- 双 RAG 子系统深度协同（投资建议 RAG + 合规审查 RAG 的实时互锁）
+- RSS 监管政策源实时接入
+
+
+
+
 
