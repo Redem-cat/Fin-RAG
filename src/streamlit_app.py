@@ -832,6 +832,43 @@ def evaluation_page():
             st.warning("无可用数据集 NO DATASET")
             selected_file = None
 
+        # 数据集管理：导入 / 在线编辑
+        with st.expander("数据集管理", expanded=False):
+            # 导入 JSON
+            uploaded_file = st.file_uploader("导入测试集 JSON", type=["json"], key="eval_upload")
+            if uploaded_file is not None:
+                try:
+                    uploaded_data = json.load(uploaded_file)
+                    if isinstance(uploaded_data, list) and len(uploaded_data) > 0:
+                        save_path = testset_dir / uploaded_file.name
+                        with open(save_path, 'w', encoding='utf-8') as f:
+                            json.dump(uploaded_data, f, ensure_ascii=False, indent=2)
+                        st.success(f"已导入: {uploaded_file.name} ({len(uploaded_data)} 题)")
+                        st.rerun()
+                    else:
+                        st.error("JSON 格式错误：应为非空列表")
+                except Exception as e:
+                    st.error(f"导入失败: {e}")
+
+            # 在线编辑当前数据集
+            if selected_file:
+                edit_path = testset_dir / selected_file
+                try:
+                    with open(edit_path, 'r', encoding='utf-8') as f:
+                        current_json = f.read()
+                    edited_json = st.text_area("在线编辑", value=current_json, height=200, key="eval_editor")
+                    if st.button("保存修改", key="eval_save"):
+                        try:
+                            parsed = json.loads(edited_json)
+                            with open(edit_path, 'w', encoding='utf-8') as f:
+                                json.dump(parsed, f, ensure_ascii=False, indent=2)
+                            st.success("保存成功")
+                            st.rerun()
+                        except json.JSONDecodeError as je:
+                            st.error(f"JSON 格式错误: {je}")
+                except Exception as e:
+                    st.error(f"读取失败: {e}")
+
         # 指标 - 蓝色标签
         available_metrics = ["faithfulness", "answer_relevance", "context_precision", "context_recall"]
         metric_labels = {
