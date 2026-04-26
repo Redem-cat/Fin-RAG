@@ -160,7 +160,8 @@ class FinancialNewsCrawler:
                 "biz": "web_724",
                 "fastColumn": "102",
                 "sortEnd": "",
-                "pageSize": max_count
+                "pageSize": max_count,
+                "req_trace": str(int(time.time() * 1000))
             }
             
             response = requests.get(
@@ -195,12 +196,35 @@ class FinancialNewsCrawler:
         self._save_history()
         return news_list
     
-    def crawl_all(self, max_count_per_source: int = 30) -> List[CrawledNews]:
+    def _is_relevant(self, news: CrawledNews) -> bool:
+        """判断新闻是否与芯片/半导体/智能驾驶/电子供应链相关"""
+        keywords = [
+            "芯片", "半导体", "集成电路", "晶圆", "光刻", "刻蚀",
+            "GPU", "CPU", "AI芯片", "存储芯片", "NAND", "DRAM",
+            "代工", "台积电", "中芯", "三星", "联电",
+            "光刻机", "ASML", "刻蚀机",
+            "硅片", "光刻胶", "特种气体", "靶材",
+            "5nm", "7nm", "3nm", "14nm", "28nm",
+            "封装", "测试", "EDA",
+            "智驾", "自动驾驶", "智能驾驶", "激光雷达",
+            "车载芯片", "车规级",
+            "通信", "5G", "6G", "基站", "射频",
+            "机器人", "人形机器人", "伺服电机", "减速器",
+            "停产", "断供", "制裁", "出口管制", "供应链",
+        ]
+        text = f"{news.title} {news.content}".lower()
+        for kw in keywords:
+            if kw.lower() in text:
+                return True
+        return False
+
+    def crawl_all(self, max_count_per_source: int = 30, filter_relevant: bool = True) -> List[CrawledNews]:
         """
-        爬取所有数据源
+        爬取所有数据源，可选过滤芯片/半导体相关新闻
         
         Args:
             max_count_per_source: 每个数据源的最大爬取数量
+            filter_relevant: 是否只保留相关领域新闻
             
         Returns:
             合并后的新闻列表
@@ -217,6 +241,12 @@ class FinancialNewsCrawler:
         
         # 按时间排序
         all_news.sort(key=lambda x: x.publish_time, reverse=True)
+        
+        # 过滤相关新闻
+        if filter_relevant:
+            filtered = [n for n in all_news if self._is_relevant(n)]
+            logger.info(f"[过滤] 从 {len(all_news)} 条中筛选出 {len(filtered)} 条芯片/半导体相关新闻")
+            all_news = filtered
         
         logger.info(f"[总计] 爬取到 {len(all_news)} 条新新闻")
         

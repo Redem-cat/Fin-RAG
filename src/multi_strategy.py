@@ -133,6 +133,9 @@ class MultiStrategySimulator:
             import akquant as aq
 
             # 准备策略配置
+            first_slot_id = list(self.slots.keys())[0]
+            first_slot = self.slots[first_slot_id]
+
             strategies_by_slot = {}
             strategy_max_order_size = {}
             slot_weights = {}
@@ -140,30 +143,39 @@ class MultiStrategySimulator:
             for slot_id, slot in self.slots.items():
                 if slot.strategy_class is not None:
                     strategies_by_slot[slot_id] = slot.strategy_class
-                strategy_max_order_size[slot_id] = slot.max_order_size
+                    # 注入 symbol，避免策略里硬编码 subscribe("AAPL")
+                    slot.strategy_class._target_symbol = symbols
+                # 当前策略默认下单 100 股，若 max_order_size < 100 会导致订单被 AKQuant 风控拒绝
+                effective_max_size = max(slot.max_order_size, 100)
+                if effective_max_size != slot.max_order_size:
+                    print(f"[MultiStrategy] 槽位 {slot_id}: max_order_size 从 {slot.max_order_size} 提升到 {effective_max_size}，避免订单被拒绝")
+                strategy_max_order_size[slot_id] = effective_max_size
                 slot_weights[slot_id] = slot.weight
 
-            # 构建 BacktestConfig
-            config = aq.BacktestConfig(
-                strategy_config=aq.StrategyConfig(
-                    strategy_id=list(self.slots.keys())[0] if self.slots else "alpha",
-                    strategies_by_slot=strategies_by_slot if strategies_by_slot else None,
-                    strategy_max_order_size=strategy_max_order_size,
-                )
-            )
-
             # 运行回测
+            # AKQuant 要求必须提供主 strategy 参数，即使是多策略模式
             backtest_kwargs = {
                 "data": data,
-                "strategy": list(self.slots.values())[0].strategy_class,
                 "symbols": symbols,
                 "initial_cash": initial_cash,
                 "commission_rate": commission_rate,
                 "stamp_tax_rate": stamp_tax_rate,
                 "transfer_fee_rate": transfer_fee_rate,
                 "show_progress": False,
-                "config": config,
+                "strict_strategy_params": False,
             }
+
+            if first_slot.strategy_class is not None:
+                backtest_kwargs["strategy"] = first_slot.strategy_class
+                backtest_kwargs["strategy_id"] = first_slot_id
+
+            # 其余槽位通过 strategies_by_slot 传递，避免与主策略重复
+            remaining_strategies = {
+                k: v for k, v in strategies_by_slot.items() if k != first_slot_id
+            }
+            if remaining_strategies:
+                backtest_kwargs["strategies_by_slot"] = remaining_strategies
+                backtest_kwargs["strategy_max_order_size"] = strategy_max_order_size
 
             if start_date:
                 backtest_kwargs["start_time"] = start_date
@@ -171,6 +183,11 @@ class MultiStrategySimulator:
                 backtest_kwargs["end_time"] = end_date
 
             result = aq.run_backtest(**backtest_kwargs)
+
+            # 调试信息
+            trades_count = len(result.trades_df) if hasattr(result, 'trades_df') else 0
+            orders_count = len(result.orders_df) if hasattr(result, 'orders_df') else 0
+            print(f"[MultiStrategy] trades={trades_count}, orders={orders_count}, return={result.metrics.total_return_pct}%")
 
             # 提取指标
             metrics = result.metrics
@@ -180,7 +197,7 @@ class MultiStrategySimulator:
                 "sharpe_ratio": metrics.sharpe_ratio,
                 "max_drawdown_pct": metrics.max_drawdown_pct,
                 "win_rate": metrics.win_rate,
-                "total_trades": len(result.trades_df) if hasattr(result, 'trades_df') else 0,
+                "total_trades": trades_count,
                 "final_value": metrics.final_value if hasattr(metrics, 'final_value') else initial_cash * (1 + metrics.total_return_pct / 100),
             }
 
@@ -347,6 +364,49 @@ class MultiStrategySimulator:
         self._results_cache.clear()
         self.active_snapshot = None
 
+    @staticmethod
+    def _resolve_strategy_class(class_str: str):
+        """
+        从序列化的字符串恢复 strategy_class。
+        尝试从 AKQuant 模块中查找匹配的 Strategy 类。
+
+        Args:
+            class_str: 类的字符串表示，如 "<class 'akquant.strategy.Momentum'>"
+
+        Returns:
+            恢复的 Strategy 类，若无法恢复则返回 None
+        """
+        if not class_str or class_str == "None":
+            return None
+
+        # 从字符串中提取类名，如 "Momentum"
+        import re
+        match = re.search(r"class\s+'(\w+)'", class_str)
+        if not match:
+            match = re.search(r"'(\w+)'", class_str)
+
+        if match:
+            class_name = match.group(1)
+            try:
+                import akquant as aq
+                if hasattr(aq, class_name):
+                    return getattr(aq, class_name)
+            except ImportError:
+                pass
+
+            # 尝试从内置策略模块查找
+            try:
+                from src.quantitative import get_available_strategies
+                strategies = get_available_strategies()
+                for s in strategies:
+                    if s.__name__ == class_name:
+                        return s
+            except (ImportError, AttributeError):
+                pass
+
+        print(f"[MultiStrategySimulator] 无法恢复策略类: {class_str}")
+        return None
+
     def save_config(self, name: str) -> str:
         """保存多策略配置"""
         config_dir = BASE_PATH / "multi_strategy_configs"
@@ -382,8 +442,15 @@ class MultiStrategySimulator:
             self.active_snapshot = config.get("active_snapshot")
 
             for slot_data in config.get("slots", []):
+                # 尝试恢复 strategy_class
+                strategy_class = None
+                class_str = slot_data.get("strategy_class")
+                if class_str:
+                    strategy_class = self._resolve_strategy_class(class_str)
+
                 slot = StrategySlot(
                     slot_id=slot_data["slot_id"],
+                    strategy_class=strategy_class,
                     strategy_params=slot_data.get("strategy_params", {}),
                     max_order_size=slot_data.get("max_order_size", 10),
                     weight=slot_data.get("weight", 1.0),

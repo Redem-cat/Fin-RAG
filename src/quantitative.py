@@ -208,8 +208,12 @@ def create_strategy_instance(strategy_type: str, params: Dict) -> Any:
                 self.warmup_period = slow + 10
                 
             def on_start(self):
-                self.subscribe("AAPL")
-                
+                sym = getattr(self, '_target_symbol', None) or getattr(self, 'symbols', 'AAPL')
+                if isinstance(sym, (list, tuple)):
+                    for s in sym: self.subscribe(s)
+                elif sym:
+                    self.subscribe(sym)
+
             def on_bar(self, bar):
                 closes = self.get_history(count=self.slow_window, symbol=bar.symbol, field="close")
                 if len(closes) < self.slow_window:
@@ -241,8 +245,12 @@ def create_strategy_instance(strategy_type: str, params: Dict) -> Any:
                 self.warmup_period = period + 10
                 
             def on_start(self):
-                self.subscribe("AAPL")
-                
+                sym = getattr(self, '_target_symbol', None) or getattr(self, 'symbols', 'AAPL')
+                if isinstance(sym, (list, tuple)):
+                    for s in sym: self.subscribe(s)
+                elif sym:
+                    self.subscribe(sym)
+
             def on_bar(self, bar):
                 closes = self.get_history(count=self.rsi_period + 1, symbol=bar.symbol, field="close")
                 if len(closes) < self.rsi_period + 1:
@@ -285,8 +293,12 @@ def create_strategy_instance(strategy_type: str, params: Dict) -> Any:
                 self.warmup_period = slow + signal + 10
                 
             def on_start(self):
-                self.subscribe("AAPL")
-                
+                sym = getattr(self, '_target_symbol', None) or getattr(self, 'symbols', 'AAPL')
+                if isinstance(sym, (list, tuple)):
+                    for s in sym: self.subscribe(s)
+                elif sym:
+                    self.subscribe(sym)
+
             def _ema(self, data, period):
                 """计算 EMA"""
                 alpha = 2 / (period + 1)
@@ -332,8 +344,12 @@ def create_strategy_instance(strategy_type: str, params: Dict) -> Any:
                 self.warmup_period = window + 10
                 
             def on_start(self):
-                self.subscribe("AAPL")
-                
+                sym = getattr(self, '_target_symbol', None) or getattr(self, 'symbols', 'AAPL')
+                if isinstance(sym, (list, tuple)):
+                    for s in sym: self.subscribe(s)
+                elif sym:
+                    self.subscribe(sym)
+
             def on_bar(self, bar):
                 closes = self.get_history(count=self.window, symbol=bar.symbol, field="close")
                 if len(closes) < self.window:
@@ -349,7 +365,7 @@ def create_strategy_instance(strategy_type: str, params: Dict) -> Any:
                 
                 # 价格触及下轨买入
                 if bar.close <= lower_band and position == 0:
-                    self.buy(symbol=bar.symbol, quantity=100)
+                    self.buy(symbol=bar.symbol, quantity=1)
                 # 价格触及上轨卖出
                 elif bar.close >= upper_band and position > 0:
                     self.sell(symbol=bar.symbol, quantity=position)
@@ -425,6 +441,8 @@ def run_backtest(
         
         # 创建策略类
         strategy_class = create_strategy_instance(strategy_type, strategy_params)
+        # 注入目标 symbol，避免策略里硬编码 subscribe("AAPL")
+        strategy_class._target_symbol = symbol
         
         # 构建回测参数
         backtest_kwargs = {
@@ -436,12 +454,11 @@ def run_backtest(
             "show_progress": False,
             "start_time": start_date,
             "end_time": end_date,
-            "strict_strategy_params": False
+            "strict_strategy_params": False,
+            "t_plus_one": True,
+            "stamp_tax_rate": 0.001,
+            "transfer_fee_rate": 0.00001,
         }
-        
-        # 添加基准对比（如果提供）
-        if benchmark_data is not None:
-            backtest_kwargs["benchmark"] = benchmark_data
         
         # 添加流式回调（如果提供）
         if on_event is not None:

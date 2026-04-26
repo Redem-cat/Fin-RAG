@@ -1,6 +1,16 @@
+import sys
+import os
+
+# 修复 Windows 控制台编码问题：强制使用 UTF-8 输出
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, IOError):
+        pass
+
 import streamlit as st
 from pathlib import Path
-import sys
 import json
 import pandas as pd
 import plotly.express as px
@@ -428,7 +438,7 @@ div[data-testid="stSlider"] [role="slider"] {
 """, unsafe_allow_html=True)
 
 
-def display_chat_message(role, content, sources=None, msg_index=None, used_context=None, compliance=None, kg_sources=None, citation_summary=None):
+def display_chat_message(role, content, sources=None, msg_index=None, used_context=None, compliance=None, kg_sources=None, citation_summary=None, resset_context=None, has_resset_results=False):
     if role == "user":
         st.markdown(f"""
         <div class="user-message">
@@ -440,14 +450,19 @@ def display_chat_message(role, content, sources=None, msg_index=None, used_conte
         context_hint = ""
         if used_context is not None:
             if used_context:
-                context_hint = '<span class="status-success">[RAG]</span>'
+                context_hint = '<span class="status-success" title="检索增强生成">[RAG]</span>'
             else:
-                context_hint = '<span class="status-warning">[GEN]</span>'
+                context_hint = '<span class="status-warning" title="生成">[GEN]</span>'
 
         # 添加 KG 标识
         kg_hint = ""
         if kg_sources:
-            kg_hint = '<span style="background:#8b5cf6;color:#ffffff;padding:0.125rem 0.5rem;margin-left:0.5rem;font-size:0.75rem;font-weight:700;">[KG]</span>'
+            kg_hint = '<span style="background:#8b5cf6;color:#ffffff;padding:0.125rem 0.5rem;margin-left:0.5rem;font-size:0.75rem;font-weight:700;" title="知识图谱">[KG]</span>'
+
+        # 添加锐思标识
+        resset_hint = ""
+        if has_resset_results:
+            resset_hint = '<span style="background:#f59e0b;color:#ffffff;padding:0.125rem 0.5rem;margin-left:0.5rem;font-size:0.75rem;font-weight:700;" title="锐思数据">[RESSET]</span>'
 
         # 添加合规标识（在 RAG/GEN 右边）
         compliance_hint = ""
@@ -462,40 +477,60 @@ def display_chat_message(role, content, sources=None, msg_index=None, used_conte
 
         st.markdown(f"""
         <div class="assistant-message">
-            <strong>AI</strong> {context_hint} {kg_hint} {compliance_hint}
+            <strong>AI</strong> {context_hint} {kg_hint} {resset_hint} {compliance_hint}
         </div>
         """, unsafe_allow_html=True)
         st.markdown(content)
-        
-        # 显示引用摘要
-        if citation_summary:
-            st.markdown(f"""
-            <div style="margin-top:0.5rem;padding:0.5rem;background:#f8fafc;border-left:3px solid #3b82f6;border-radius:0.25rem;font-size:0.85rem;">
-                {citation_summary}
-            </div>
-            """, unsafe_allow_html=True)
 
-    # 显示 KG 检索结果
-    if kg_sources:
-        with st.expander("KG 知识图谱检索", expanded=False):
-            for kg_source in kg_sources:
-                st.markdown(f"- 类型: {kg_source.get('type', 'unknown')} | 置信度: {kg_source.get('confidence', 0):.2f}")
+    # ========== 参考文献区域 ==========
+    has_any_sources = (sources and used_context) or kg_sources or has_resset_results
+    if has_any_sources and role == "assistant":
+        st.markdown("""
+        <div style="margin-top:1rem;padding-top:0.5rem;border-top:1px solid #e5e7eb;">
+            <span style="font-size:0.85rem;font-weight:600;color:#6b7280;">REFERENCES 参考资料</span>
+        </div>
+        """, unsafe_allow_html=True)
 
-    if sources and used_context:
-        with st.expander(f"SOURCE ({len(sources)})", expanded=False):
-            for i, source in enumerate(sources, 1):
-                content_full = source.get('content', source.get('content_preview', ''))
-                similarity = source.get('similarity', 0)
+        # RAG 向量检索文档
+        if sources and used_context:
+            with st.expander(f"RAG Documents 检索文档 ({len(sources)})", expanded=False):
+                for i, source in enumerate(sources, 1):
+                    content_full = source.get('content', source.get('content_preview', ''))
+                    similarity = source.get('similarity', 0)
+                    source_name = source.get('source', 'unknown')
 
+                    st.markdown(f"""
+                    <div style="margin:0.5rem 0;padding:0.5rem;background:#f9fafb;border-radius:0.25rem;">
+                        <div style="font-weight:600;font-size:0.85rem;">
+                            [{i}] {source_name}
+                            <span style="background:#000000;color:#ffffff;padding:0.125rem 0.5rem;margin-left:0.5rem;font-size:0.75rem;">{similarity:.3f}</span>
+                        </div>
+                        <div style="margin-top:0.25rem;font-size:0.8rem;color:#4b5563;max-height:80px;overflow:hidden;text-overflow:ellipsis;" title="{content_full[:500]}">
+                            {content_full[:200]}...
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+        # 锐思数据
+        if has_resset_results and resset_context:
+            with st.expander("RESSET Data 锐思数据", expanded=False):
                 st.markdown(f"""
-                <div class="source-info">
-                    <strong>{i}. {source.get('source', 'unknown')}</strong>
-                    <span style="background:#000000;color:#ffffff;padding:0.125rem 0.5rem;margin-left:0.5rem;font-size:0.75rem;">
-                        {similarity:.3f}
-                    </span>
+                <div style="padding:0.75rem;background:#fffbeb;border-left:3px solid #f59e0b;border-radius:0.25rem;font-size:0.85rem;max-height:300px;overflow-y:auto;">
+                    <pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit;">{resset_context[:2000]}</pre>
                 </div>
                 """, unsafe_allow_html=True)
-                st.text_area("Source Content", content_full, height=100, key=f"source_{msg_index}_{i}", label_visibility="collapsed")
+
+        # 知识图谱来源
+        if kg_sources:
+            with st.expander(f"Knowledge Graph 知识图谱 ({len(kg_sources)})", expanded=False):
+                for i, kg_source in enumerate(kg_sources, 1):
+                    st.markdown(f"""
+                    <div style="margin:0.25rem 0;padding:0.5rem;background:#f5f3ff;border-radius:0.25rem;">
+                        <span style="font-weight:600;">[{i}]</span> 
+                        Type: {kg_source.get('type', 'unknown')} | 
+                        Confidence: {kg_source.get('confidence', 0):.2f}
+                    </div>
+                    """, unsafe_allow_html=True)
 
 
 def init_session_state():
@@ -503,6 +538,8 @@ def init_session_state():
         st.session_state.logged_in = False
     if 'user_info' not in st.session_state:
         st.session_state.user_info = None
+    if 'auth_token' not in st.session_state:
+        st.session_state.auth_token = None
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
     if 'current_conversation_id' not in st.session_state:
@@ -525,15 +562,17 @@ def render_auth_sidebar():
     if st.session_state.logged_in:
         return True
     
-    st.caption("LOGIN TO SAVE HISTORY")
+    st.caption("登录以保存历史记录")
     
-    auth_mode = st.radio("Auth Mode", ["LOGIN", "REGISTER"], horizontal=True, label_visibility="collapsed")
+    auth_mode = st.radio("认证模式", ["LOGIN", "REGISTER"],
+                         format_func=lambda x: "登录 LOGIN" if x == "LOGIN" else "注册 REGISTER",
+                         horizontal=True, label_visibility="collapsed")
     
     if auth_mode == "LOGIN":
         with st.form("login"):
-            username = st.text_input("USERNAME", "")
-            password = st.text_input("PASSWORD", "", type="password")
-            submit = st.form_submit_button("LOGIN", type="primary", width='stretch')
+            username = st.text_input("用户名 USERNAME", "")
+            password = st.text_input("密码 PASSWORD", "", type="password")
+            submit = st.form_submit_button("登录 LOGIN", type="primary", width='stretch')
             
             if submit:
                 if username and password:
@@ -541,29 +580,33 @@ def render_auth_sidebar():
                     if success:
                         st.session_state.logged_in = True
                         st.session_state.user_info = user_info
+                        # 创建持久化 token（7天有效期）
+                        token = auth.create_session_token(user_info["id"])
+                        st.session_state.auth_token = token
+                        st.query_params["t"] = token
                         st.rerun()
                     else:
                         st.error(msg)
     else:
         with st.form("register"):
-            username = st.text_input("USERNAME", "")
-            password = st.text_input("PASSWORD", "", type="password")
-            confirm = st.text_input("CONFIRM", "", type="password")
-            submit = st.form_submit_button("REGISTER", type="primary", width='stretch')
+            username = st.text_input("用户名 USERNAME", "")
+            password = st.text_input("密码 PASSWORD", "", type="password")
+            confirm = st.text_input("确认密码 CONFIRM", "", type="password")
+            submit = st.form_submit_button("注册 REGISTER", type="primary", width='stretch')
             
             if submit:
                 if not username or not password:
-                    st.warning("REQUIRED")
+                    st.warning("必填 REQUIRED")
                 elif len(username) < 4 or len(username) > 20:
-                    st.warning("USERNAME: 4-20")
+                    st.warning("用户名 USERNAME: 4-20 字符")
                 elif len(password) < 6 or len(password) > 20:
-                    st.warning("PASSWORD: 6-20")
+                    st.warning("密码 PASSWORD: 6-20 字符")
                 elif password != confirm:
-                    st.error("MISMATCH")
+                    st.error("密码不一致 MISMATCH")
                 else:
                     success, msg = auth.register(username, password)
                     if success:
-                        st.success("DONE")
+                        st.success("注册成功! 请登录。")
                     else:
                         st.error(msg)
     
@@ -574,6 +617,29 @@ def chat_page():
     st.markdown('<h1 class="main-header">FinRAG-Advisor</h1>', unsafe_allow_html=True)
     init_session_state()
 
+    # ========== 持久化登录：自动恢复会话 ==========
+    if not st.session_state.logged_in:
+        # 1. 尝试从 session_state 恢复
+        if st.session_state.auth_token:
+            user_info = auth.validate_session_token(st.session_state.auth_token)
+            if user_info:
+                st.session_state.logged_in = True
+                st.session_state.user_info = user_info
+            else:
+                # Token 已过期，清除
+                st.session_state.auth_token = None
+        else:
+            # 2. 尝试从 URL query params 恢复（页面刷新后）
+            token = st.query_params.get("t")
+            if token:
+                user_info = auth.validate_session_token(token)
+                if user_info:
+                    st.session_state.logged_in = True
+                    st.session_state.user_info = user_info
+                    st.session_state.auth_token = token
+                # 清除 URL 中的 token，防止泄露
+                del st.query_params["t"]
+
     with st.sidebar:
         # 用户信息
         if st.session_state.logged_in:
@@ -583,11 +649,19 @@ def chat_page():
             </div>
             """, unsafe_allow_html=True)
             
-            if st.button("LOGOUT", width='stretch'):
+            if st.button("退出登录 LOGOUT", width='stretch'):
+                # 删除服务端 token
+                if st.session_state.auth_token:
+                    auth.delete_session_token(st.session_state.auth_token)
+                # 清除所有登录状态
                 st.session_state.logged_in = False
                 st.session_state.user_info = None
+                st.session_state.auth_token = None
                 st.session_state.chat_history = []
                 st.session_state.current_conversation_id = None
+                # 清除 URL token
+                if "t" in st.query_params:
+                    del st.query_params["t"]
                 st.rerun()
         else:
             render_auth_sidebar()
@@ -598,16 +672,16 @@ def chat_page():
             <div style="font-weight:700;">SYSTEM</div>
             <div>STATUS: ONLINE</div>
             <div>RETRIEVAL: BGE-M3</div>
-            <div>LLM: QWEN-2.5</div>
+            <div>LLM: DEEPSEEK</div>
         </div>
         """, unsafe_allow_html=True)
 
         # 参数 - 蓝色滑块
-        st.session_state.search_top_k = st.slider("TOP-K", 1, 10, st.session_state.search_top_k)
+        st.session_state.search_top_k = st.slider("检索数量 TOP-K", 1, 10, st.session_state.search_top_k)
 
         # 对话管理
         if st.session_state.logged_in:
-            if st.button("NEW CHAT", type="primary", width='stretch'):
+            if st.button("新建对话 NEW CHAT", type="primary", width='stretch'):
                 conv_id = auth.create_conversation(st.session_state.user_info['id'], "NEW")
                 if conv_id:
                     st.session_state.current_conversation_id = conv_id
@@ -621,7 +695,7 @@ def chat_page():
             if conversations:
                 for conv in conversations[:10]:
                     updated = datetime.fromisoformat(conv['updated_at']).strftime("%m/%d")
-                    title = conv['title'][:12] if conv.get('title') else "UNTITLED"
+                    title = conv['title'][:12] if conv.get('title') else "未命名 UNTITLED"
                     
                     is_active = st.session_state.current_conversation_id == conv['id']
                     
@@ -645,7 +719,7 @@ def chat_page():
                                     st.session_state.chat_history = []
                                 st.rerun()
 
-        if st.button("CLEAR", width='stretch'):
+        if st.button("清空 CLEAR", width='stretch'):
             st.session_state.chat_history = []
             st.session_state.current_conversation_id = None
             clear_conversation_history()
@@ -675,8 +749,12 @@ def chat_page():
             display_chat_message(msg[0], msg[1], msg[2], msg_index=idx, used_context=msg[3])
         elif len(msg) == 5:
             display_chat_message(msg[0], msg[1], msg[2], msg_index=idx, used_context=msg[3], compliance=msg[4])
-        elif len(msg) >= 6:
-            display_chat_message(msg[0], msg[1], msg[2], msg_index=idx, used_context=msg[3], compliance=msg[4], kg_sources=msg[5] if msg[5] else None, citation_summary=msg[6] if len(msg) >= 7 else None)
+        elif len(msg) == 6:
+            display_chat_message(msg[0], msg[1], msg[2], msg_index=idx, used_context=msg[3], compliance=msg[4], kg_sources=msg[5] if msg[5] else None)
+        elif len(msg) == 7:
+            display_chat_message(msg[0], msg[1], msg[2], msg_index=idx, used_context=msg[3], compliance=msg[4], kg_sources=msg[5] if msg[5] else None, citation_summary=msg[6])
+        elif len(msg) >= 8:
+            display_chat_message(msg[0], msg[1], msg[2], msg_index=idx, used_context=msg[3], compliance=msg[4], kg_sources=msg[5] if msg[5] else None, citation_summary=msg[6], resset_context=msg[7], has_resset_results=msg[8] if len(msg) > 8 else False)
         else:
             display_chat_message(msg[0], msg[1], msg[2], msg_index=idx, used_context=msg[3])
 
@@ -703,19 +781,27 @@ def chat_page():
             
             # 非引导流程，正常问答
             if not in_onboarding:
-                # 获取用户称呼
+                # 获取用户称呼（校验合理性，防止引导流程中的长回答被当作名字）
                 user_name = None
                 if st.session_state.logged_in:
                     user_id = st.session_state.user_info.get("id")
                     if user_id:
                         profile = auth.get_user_profile(user_id)
-                        if profile and profile.get("display_name"):
-                            user_name = profile["display_name"]
+                        raw_name = profile.get("display_name") if profile else None
+                        if raw_name:
+                            # 过滤明显不是名字的内容：过长、包含句子标点、包含特定关键词
+                            is_valid_name = (
+                                len(raw_name) <= 12
+                                and not any(c in raw_name for c in "。，！？；")
+                                and not any(kw in raw_name for kw in ["投资", "经历", "基金", "股票", "新手", "刚开始"])
+                            )
+                            if is_valid_name:
+                                user_name = raw_name
 
                 with st.spinner("..."):
                     result = ask_question(user_input, top_k=st.session_state.search_top_k, user_name=user_name)
 
-                    st.session_state.chat_history.append(("assistant", result['answer'], result['source'], result['used_context'], result.get('compliance'), result.get('kg_sources', []), result.get('citation_summary')))
+                    st.session_state.chat_history.append(("assistant", result['answer'], result['source'], result['used_context'], result.get('compliance'), result.get('kg_sources', []), result.get('citation_summary'), result.get('resset_context'), result.get('has_resset_results')))
                     
                     if st.session_state.logged_in:
                         if not st.session_state.current_conversation_id:
@@ -732,7 +818,7 @@ def chat_page():
 
 
 def evaluation_page():
-    st.markdown('<h1 class="main-header">EVALUATION</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">EVALUATION 评估</h1>', unsafe_allow_html=True)
     init_session_state()
 
     with st.sidebar:
@@ -741,22 +827,22 @@ def evaluation_page():
         testset_files = [f for f in testset_dir.glob("*.json") if f.name not in ["testset_template.json", "retrieval_*.json"]]
 
         if testset_files:
-            selected_file = st.selectbox("DATASET", options=[f.name for f in testset_files], index=0)
+            selected_file = st.selectbox("数据集 DATASET", options=[f.name for f in testset_files], index=0)
         else:
-            st.warning("NO DATASET")
+            st.warning("无可用数据集 NO DATASET")
             selected_file = None
 
         # 指标 - 蓝色标签
         available_metrics = ["faithfulness", "answer_relevance", "context_precision", "context_recall"]
         metric_labels = {
-            "faithfulness": "FAITH",
-            "answer_relevance": "RELEVANCE",
-            "context_precision": "PRECISION",
-            "context_recall": "RECALL"
+            "faithfulness": "FAITH 忠实度",
+            "answer_relevance": "RELEVANCE 相关性",
+            "context_precision": "PRECISION 精确率",
+            "context_recall": "RECALL 召回率"
         }
         
         selected_metrics = st.multiselect(
-            "METRICS",
+            "评估指标 METRICS",
             options=[metric_labels[m] for m in available_metrics],
             default=[metric_labels[m] for m in available_metrics]
         )
@@ -764,7 +850,7 @@ def evaluation_page():
         reverse_labels = {v: k for k, v in metric_labels.items()}
         selected_metrics_keys = [reverse_labels[m] for m in selected_metrics]
 
-        if st.button("RUN", type="primary", width='stretch'):
+        if st.button("运行 RUN", type="primary", width='stretch'):
             st.session_state.eval_triggered = True
 
     # 主内容
@@ -776,7 +862,7 @@ def evaluation_page():
             with open(testset_path, 'r', encoding='utf-8') as f:
                 testset_data = json.load(f)
 
-            st.caption(f"{len(testset_data)} QUESTIONS")
+            st.caption(f"{len(testset_data)} 个问题 QUESTIONS")
 
             for i, item in enumerate(testset_data[:2]):
                 with st.expander(f"Q{i+1}: {item['question'][:30]}...", expanded=False):
@@ -787,18 +873,18 @@ def evaluation_page():
                 st.caption(f"+{len(testset_data) - 2}")
 
     with col2:
-        st.caption("METRICS")
-        st.text("FAITH: answer based on context")
-        st.text("REL: answer relevance")
-        st.text("PREC: context relevance")
-        st.text("REC: context coverage")
+        st.caption("评估指标 METRICS")
+        st.text("FAITH 忠实度: answer based on context")
+        st.text("REL 相关性: answer relevance")
+        st.text("PREC 精确率: context relevance")
+        st.text("REC 召回率: context coverage")
 
     # 执行
     if st.session_state.eval_triggered and selected_file:
         st.session_state.eval_triggered = False
         
         if not selected_metrics_keys:
-            st.error("SELECT METRICS")
+            st.error("请选择指标 SELECT METRICS")
         else:
             try:
                 with st.spinner("..."):
@@ -807,9 +893,9 @@ def evaluation_page():
 
                     evaluator = RAGEvaluator(
                         rag_chain=rag_chain,
-                        llm_provider="deepseek",  # 使用 DeepSeek API
+                        llm_provider="deepseek",
                         model_name="deepseek-chat",
-                        embed_provider="ollama",  # Embedding 仍用本地 Ollama
+                        embed_provider="ollama",
                         embed_model="my-bge-m3",
                         base_url="http://localhost:11434"
                     )
@@ -824,7 +910,7 @@ def evaluation_page():
                     st.session_state.eval_df = evaluator.get_dataframe()
 
             except Exception as e:
-                st.error(f"ERROR: {str(e)}")
+                st.error(f"错误 ERROR: {str(e)}")
 
     # 结果
     if st.session_state.eval_results is not None:
@@ -837,13 +923,13 @@ def evaluation_page():
         for i, (metric, score) in enumerate(summary.items()):
             label = metric_labels.get(metric, metric).upper()
             if score >= 0.8:
-                delta = "OK"
+                delta = "通过 OK"
                 delta_color = "normal"
             elif score >= 0.6:
-                delta = "WARN"
+                delta = "警告 WARN"
                 delta_color = "off"
             else:
-                delta = "FAIL"
+                delta = "失败 FAIL"
                 delta_color = "inverse"
 
             cols[i].metric(label, f"{score:.3f}", delta, delta_color=delta_color)
@@ -853,7 +939,7 @@ def evaluation_page():
         col_chart1, col_chart2 = st.columns(2)
 
         with col_chart1:
-            st.caption("SUMMARY")
+            st.caption("汇总 SUMMARY")
             fig_summary = go.Figure()
             fig_summary.add_trace(go.Bar(
                 x=metric_names,
@@ -875,7 +961,7 @@ def evaluation_page():
             st.plotly_chart(fig_summary, width='stretch')
 
         with col_chart2:
-            st.caption("DISTRIBUTION")
+            st.caption("分布 DISTRIBUTION")
             if st.session_state.eval_df is not None:
                 metrics_cols = [col for col in st.session_state.eval_df.columns
                                if col not in ['user_input', 'response', 'retrieved_contexts', 'reference']]
@@ -902,7 +988,7 @@ def evaluation_page():
 
         st.divider()
 
-        st.caption("DETAILS")
+        st.caption("详情 DETAILS")
         if st.session_state.eval_df is not None:
             display_cols = [col for col in st.session_state.eval_df.columns
                            if col not in ['retrieved_contexts', 'reference']]
@@ -915,7 +1001,7 @@ def evaluation_page():
         with col_dl1:
             json_str = json.dumps(st.session_state.eval_results, ensure_ascii=False, indent=2)
             st.download_button(
-                "DOWNLOAD JSON",
+                "下载 JSON",
                 data=json_str,
                 file_name=f"eval_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.json",
                 mime="application/json",
@@ -925,7 +1011,7 @@ def evaluation_page():
         with col_dl2:
             html_content = st.session_state.eval_df.to_html(index=False, escape=False)
             st.download_button(
-                "DOWNLOAD HTML",
+                "下载 HTML",
                 data=html_content,
                 file_name=f"eval_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.html",
                 mime="text/html",
@@ -935,7 +1021,7 @@ def evaluation_page():
 
 def quant_page():
     """量化策略回测页面（含规则策略、ML策略、快照管理、多策略模拟）"""
-    st.markdown('<h1 class="main-header">QUANT</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">QUANT 量化</h1>', unsafe_allow_html=True)
     init_session_state()
     
     # 检查 AKQuant 是否可用
@@ -945,89 +1031,117 @@ def quant_page():
         return
     
     # 子 Tab 布局
-    tab_rule, tab_ml, tab_snapshot, tab_multi = st.tabs([
-        "规则策略", "ML 策略训练", "快照管理", "多策略模拟盘"
+    tab_rule, tab_ml, tab_multi, tab_snapshot = st.tabs([
+        "规则策略", "ML 策略训练", "多策略模拟盘", "快照管理"
     ])
+    
+    # ===========================
+    # 侧边栏：统一的量化全局设置（规则 + ML 共用）
+    # ===========================
+    with st.sidebar:
+        st.markdown("### 量化设置 QUANT SETTINGS")
+        
+        available, msg = check_akquant_available()
+        if available:
+            st.success(f"✓ {msg}")
+        else:
+            st.warning(f"⚠ {msg}")
+        
+        # 全局数据源设置
+        quant_data_source = st.radio("数据来源 SOURCE", ["AKShare 股票数据", "模拟数据 MOCK"], horizontal=True, index=1, key="quant_data_src")
+        quant_symbol = "sh600000"
+        if quant_data_source == "AKShare 股票数据":
+            quant_symbol_input = st.text_input("股票代码 STOCK CODE", value="sh600000", key="quant_symbol")
+            # 自动补全前缀
+            quant_symbol_input = quant_symbol_input.strip().lower()
+            if len(quant_symbol_input) == 6 and quant_symbol_input.isdigit():
+                if quant_symbol_input.startswith("6"):
+                    quant_symbol = f"sh{quant_symbol_input}"
+                else:
+                    quant_symbol = f"sz{quant_symbol_input}"
+            else:
+                quant_symbol = quant_symbol_input
+        
+        col_q_start, col_q_end = st.columns(2)
+        with col_q_start:
+            quant_start_date = st.date_input("开始 START", value=datetime(2021, 1, 1), key="quant_start")
+        with col_q_end:
+            quant_end_date = st.date_input("结束 END", value=datetime(datetime.now().year, 12, 31), key="quant_end")
+        
+        quant_start_str = quant_start_date.strftime("%Y%m%d")
+        quant_end_str = quant_end_date.strftime("%Y%m%d")
+        
+        initial_cash = st.number_input("初始资金 INITIAL CASH", value=100000.0, min_value=10000.0, step=10000.0, key="quant_cash")
+        commission = st.number_input("佣金率 COMMISSION (%)", value=0.03, min_value=0.0, max_value=1.0, step=0.01, key="quant_comm") / 100
+        
+        st.divider()
     
     # ===========================
     # Tab 1: 规则策略（原有功能）
     # ===========================
     with tab_rule:
         with st.sidebar:
-            st.markdown("### QUANT SETTINGS")
-            
-            available, msg = check_akquant_available()
-            if available:
-                st.success(f"✓ {msg}")
-            else:
-                st.warning(f"⚠ {msg}")
-            
-            initial_cash = st.number_input("INITIAL CASH", value=100000.0, min_value=10000.0, step=10000.0, key="rule_cash")
-            commission = st.number_input("COMMISSION (%)", value=0.03, min_value=0.0, max_value=1.0, step=0.01, key="rule_comm") / 100
-            
-            st.divider()
-            
-            st.markdown("### STRATEGY")
+            st.markdown("### 策略 STRATEGY")
             rule_strategies = get_available_rule_strategies() if QUANT_AVAILABLE else []
             strategy_names = [s["name"] for s in rule_strategies]
             
             if strategy_names:
-                selected_strategy_name = st.selectbox("SELECT STRATEGY", options=strategy_names, index=0, key="rule_strategy")
+                selected_strategy_name = st.selectbox("选择策略 SELECT STRATEGY", options=strategy_names, index=0, key="rule_strategy")
                 selected_strategy_id = rule_strategies[strategy_names.index(selected_strategy_name)]["id"]
                 st.caption(rule_strategies[strategy_names.index(selected_strategy_name)]["description"])
             else:
                 selected_strategy_id = "dual_ma"
                 selected_strategy_name = "双均线策略"
             
-            st.markdown("### PARAMETERS")
+            st.markdown("### 参数 PARAMETERS")
             strategy_params = {}
             
             if selected_strategy_id == "dual_ma":
-                fast_window = st.slider("FAST WINDOW", 5, 30, 10, key="rule_fast")
-                slow_window = st.slider("SLOW WINDOW", 10, 60, 30, key="rule_slow")
+                fast_window = st.slider("快速窗口 FAST WINDOW", 5, 30, 10, key="rule_fast")
+                slow_window = st.slider("慢速窗口 SLOW WINDOW", 10, 60, 30, key="rule_slow")
                 strategy_params = {"fast_window": fast_window, "slow_window": slow_window}
             elif selected_strategy_id == "rsi":
-                rsi_period = st.slider("RSI PERIOD", 5, 20, 14, key="rule_rsi_p")
-                oversold = st.slider("OVERSOLD", 10, 40, 30, key="rule_os")
-                overbought = st.slider("OVERBOUGHT", 60, 90, 70, key="rule_ob")
+                rsi_period = st.slider("RSI周期 RSI PERIOD", 5, 20, 14, key="rule_rsi_p")
+                oversold = st.slider("超卖线 OVERSOLD", 10, 40, 30, key="rule_os")
+                overbought = st.slider("超买线 OVERBOUGHT", 60, 90, 70, key="rule_ob")
                 strategy_params = {"rsi_period": rsi_period, "oversold": oversold, "overbought": overbought}
             elif selected_strategy_id == "macd":
-                fast_period = st.slider("FAST PERIOD", 5, 20, 12, key="rule_macd_f")
-                slow_period = st.slider("SLOW PERIOD", 15, 40, 26, key="rule_macd_s")
-                signal_period = st.slider("SIGNAL PERIOD", 5, 15, 9, key="rule_macd_sig")
+                fast_period = st.slider("快速周期 FAST PERIOD", 5, 20, 12, key="rule_macd_f")
+                slow_period = st.slider("慢速周期 SLOW PERIOD", 15, 40, 26, key="rule_macd_s")
+                signal_period = st.slider("信号周期 SIGNAL PERIOD", 5, 15, 9, key="rule_macd_sig")
                 strategy_params = {"fast_period": fast_period, "slow_period": slow_period, "signal_period": signal_period}
             elif selected_strategy_id == "bollinger":
-                window = st.slider("WINDOW", 10, 30, 20, key="rule_boll_w")
-                num_std = st.slider("STD MULTIPLIER", 1.0, 3.0, 2.0, 0.25, key="rule_boll_std")
+                window = st.slider("窗口 WINDOW", 10, 30, 20, key="rule_boll_w")
+                num_std = st.slider("标准差倍数 STD MULTIPLIER", 1.0, 3.0, 2.0, 0.25, key="rule_boll_std")
                 strategy_params = {"window": window, "num_std": num_std}
             
             st.divider()
-            run_backtest_clicked = st.button("RUN BACKTEST", type="primary", width='stretch', key="rule_run")
+            run_backtest_clicked = st.button("运行回测 RUN BACKTEST", type="primary", width='stretch', key="rule_run")
         
-        # 数据源
+        # 使用侧边栏统一设置的数据源和参数
+        data_source = quant_data_source
+        symbol = quant_symbol
+        start_date_str = quant_start_str
+        end_date_str = quant_end_str
+        
         col_left, col_right = st.columns([1, 1])
         
         with col_left:
-            st.markdown("### DATA SOURCE")
-            data_source = st.radio("SOURCE", ["AKSHARE (股票)", "模拟数据 (MOCK)"], horizontal=True, index=1, key="rule_data_src")
-            symbol = "sh600000"
+            st.markdown("### 回测配置")
+            st.text(f"股票: {symbol}")
+            st.text(f"区间: {start_date_str} ~ {end_date_str}")
+            st.text(f"资金: ¥{initial_cash:,.0f} | 佣金: {commission*100:.3f}%")
             
-            if data_source == "AKSHARE (股票)":
-                symbol = st.text_input("STOCK CODE", value="sh600000", key="rule_symbol").lower()
-            
-            col_start, col_end = st.columns(2)
-            with col_start:
-                start_date = st.date_input("START", value=datetime(2021, 1, 1), key="rule_start")
-            with col_end:
-                end_date = st.date_input("END", value=datetime(datetime.now().year, 12, 31), key="rule_end")
-            
-            start_date_str = start_date.strftime("%Y%m%d")
-            end_date_str = end_date.strftime("%Y%m%d")
-            
-            enable_benchmark = st.checkbox("启用基准对比", value=False, key="rule_bench")
+            benchmark_type = st.selectbox(
+                "基准对比 BENCHMARK",
+                options=["无", "买入并持有 (Buy & Hold)", "上证指数 sh000001", "沪深300 sh000300"],
+                index=0,
+                key="rule_bench_type"
+            )
+            enable_benchmark = benchmark_type != "无"
         
         with col_right:
-            st.markdown("### QUICK TEMPLATES")
+            st.markdown("### 快速模板 QUICK TEMPLATES")
             templates = {
                 "双均线 (10,30) + 浦发银行": {
                     "strategy": "dual_ma", "params": {"fast_window": 10, "slow_window": 30},
@@ -1050,22 +1164,23 @@ def quant_page():
             for template_name, template_config in templates.items():
                 if st.button(template_name, width='stretch', key=f"tpl_{template_name}"):
                     st.session_state.quant_template = template_config
+                    st.session_state.quant_template_name = template_name
             
             if "quant_template" in st.session_state:
                 template = st.session_state.quant_template
                 selected_strategy_id = template["strategy"]
                 strategy_params = template["params"]
-                symbol = template["symbol"]
-                start_date_str = template["start"]
-                end_date_str = template["end"]
-                st.info(f"已加载模板: {template_name}")
+                # 模板只覆盖策略和参数，股票代码和日期仍用侧边栏统一设置
+                loaded_name = st.session_state.get("quant_template_name", "未知模板")
+                st.info(f"已加载模板策略: {loaded_name} (股票: {symbol})")
         
         # 执行回测
         if run_backtest_clicked:
+            st.text(f"[DEBUG] symbol={symbol}, data_source={data_source}")
             _execute_backtest(
                 data_source, symbol, start_date_str, end_date_str,
                 selected_strategy_id, strategy_params, selected_strategy_name,
-                initial_cash, commission, enable_benchmark
+                initial_cash, commission, benchmark_type
             )
         
         with st.expander("📖 规则策略使用指南", expanded=False):
@@ -1086,7 +1201,7 @@ def quant_page():
             st.code("pip install scikit-learn xgboost lightgbm", language="bash")
             return
         
-        st.markdown("### ML 策略 Walk-forward 训练")
+        st.markdown("### ML (机器学习) 策略 Walk-forward 训练")
         st.caption("使用机器学习模型预测涨跌，通过 Walk-forward Validation 防止未来函数泄露")
         
         col_ml_config, col_ml_data = st.columns([1, 2])
@@ -1102,7 +1217,7 @@ def quant_page():
             st.caption(ml_strategy_list[ml_strategy_names.index(selected_ml_name)]["description"])
             
             st.divider()
-            st.markdown("#### Walk-forward 参数")
+            st.markdown("#### Walk-forward 参数设置")
             
             ml_train_window = st.number_input("训练窗口", value=50, min_value=20, max_value=500, key="ml_train_w")
             ml_test_window = st.number_input("测试窗口", value=20, min_value=5, max_value=100, key="ml_test_w")
@@ -1147,20 +1262,15 @@ def quant_page():
             
             st.divider()
             
-            # 数据源配置
-            ml_data_source = st.radio("数据源", ["模拟数据 (MOCK)", "AKSHARE (股票)"], horizontal=True, index=0, key="ml_data_src")
-            ml_symbol = "sh600000"
-            if ml_data_source == "AKSHARE (股票)":
-                ml_symbol = st.text_input("股票代码", value="sh600000", key="ml_symbol").lower()
+            # 使用侧边栏统一的数据源设置
+            ml_data_source = quant_data_source
+            ml_symbol = quant_symbol
+            ml_start_date = quant_start_date
+            ml_end_date = quant_end_date
+            ml_initial_cash = initial_cash
+            ml_commission = commission
             
-            col_ml_start, col_ml_end = st.columns(2)
-            with col_ml_start:
-                ml_start_date = st.date_input("开始日期", value=datetime(2021, 1, 1), key="ml_start")
-            with col_ml_end:
-                ml_end_date = st.date_input("结束日期", value=datetime(datetime.now().year, 12, 31), key="ml_end")
-            
-            ml_initial_cash = st.number_input("初始资金", value=100000.0, min_value=10000.0, key="ml_cash")
-            ml_commission = st.number_input("佣金 (%)", value=0.03, min_value=0.0, max_value=1.0, step=0.01, key="ml_comm") / 100
+            st.info(f"数据源: {ml_data_source}\n股票: {ml_symbol}\n区间: {quant_start_str} ~ {quant_end_str}")
             
             st.divider()
             
@@ -1173,13 +1283,27 @@ def quant_page():
             st.markdown("#### ML 策略说明")
             
             ml_explanation = {
-                "logistic_regression": "**逻辑回归**: 线性分类模型，适合特征与标签呈线性关系的场景。训练快速，不易过拟合。",
-                "xgboost": "**XGBoost**: 梯度提升树，非线性模型，支持特征重要性分析。适合中等规模数据，准确率高。",
-                "lightgbm": "**LightGBM**: 高效梯度提升树，训练速度比 XGBoost 更快，内存占用更少。适合大规模数据。",
-                "random_forest": "**随机森林**: 集成学习，多棵决策树投票。鲁棒性强，不易过拟合，但训练较慢。",
-                "lstm": "**LSTM**: 长短期记忆网络，深度学习序列模型。适合捕捉时序依赖，但训练耗时，需要 PyTorch。",
+                "logistic_regression": "**逻辑回归 Logistic Regression**: 线性分类模型，适合特征与标签呈线性关系的场景。训练快速，可解释性强，不易过拟合。",
+                "xgboost": "**XGBoost (eXtreme Gradient Boosting)**: 梯度提升树，非线性模型，支持特征重要性分析。适合中等规模数据，准确率高，调参空间大。",
+                "lightgbm": "**LightGBM (Light Gradient Boosting Machine)**: 微软开源的高效梯度提升树，训练速度比 XGBoost 更快，内存占用更少。适合大规模数据。",
+                "random_forest": "**随机森林 Random Forest**: 集成学习，多棵决策树投票取平均。鲁棒性强，不易过拟合，对异常值不敏感，但训练较慢。",
+                "lstm": "**LSTM (Long Short-Term Memory)**: 长短期记忆网络，深度学习序列模型。适合捕捉股价时序依赖和长期趋势，但训练耗时，需要 PyTorch。",
             }
+            
+            # 展示当前选中模型的说明
             st.markdown(ml_explanation.get(model_type, ""))
+            
+            st.divider()
+            st.markdown("**可选模型对比**")
+            st.markdown("""
+            | 模型 | 类型 | 速度 | 准确率 | 可解释性 | 适用场景 |
+            |------|------|------|--------|----------|----------|
+            | 逻辑回归 | 线性 | 快 | 中 | 高 | 基线模型，快速验证 |
+            | 随机森林 | 树集成 | 中 | 中高 | 中 | 数据量小，需要稳定性 |
+            | XGBoost | 梯度提升 | 中 | 高 | 中 | 中等数据，追求准确率 |
+            | LightGBM | 梯度提升 | 快 | 高 | 中 | 大数据，追求效率 |
+            | LSTM | 深度学习 | 慢 | 中高 | 低 | 时序特征明显，有GPU |
+            """)
             
             st.divider()
             st.markdown("#### Walk-forward Validation 原理")
@@ -1304,7 +1428,7 @@ def quant_page():
                         col_resume, col_delete = st.columns(2)
                         
                         with col_resume:
-                            if st.button("恢复", key=f"resume_{name}"):
+                            if st.button("恢复并运行", key=f"resume_{name}"):
                                 st.session_state.resume_snapshot_name = name
                         
                         with col_delete:
@@ -1325,10 +1449,7 @@ def quant_page():
             col_res_data, col_res_config = st.columns(2)
             
             with col_res_data:
-                res_data_source = st.radio("新数据源", ["模拟数据 (MOCK)", "AKSHARE (股票)"], horizontal=True, index=0, key="res_data_src")
-                res_symbol = "sh600000"
-                if res_data_source == "AKSHARE (股票)":
-                    res_symbol = st.text_input("股票代码", value="sh600000", key="res_symbol").lower()
+                res_symbol = st.text_input("股票代码", value="sh600000", key="res_symbol").lower()
                 
                 col_res_start, col_res_end = st.columns(2)
                 with col_res_start:
@@ -1352,7 +1473,7 @@ def quant_page():
             if st.button("从快照恢复并运行", type="primary", key="run_resume"):
                 with st.spinner("正在从快照恢复..."):
                     try:
-                        df = _load_market_data(res_data_source, res_symbol, res_start_date, res_end_date)
+                        df = _load_market_data("AKShare 股票数据", res_symbol, res_start_date, res_end_date)
                         
                         if df is not None:
                             from src.snapshot_manager import resume_snapshot
@@ -1368,6 +1489,11 @@ def quant_page():
                                 metrics = result["metrics"]
                                 st.success(f"✓ 快照恢复成功！")
                                 
+                                # 显示快照元数据
+                                snap_info = get_snapshot_manager().get_snapshot_info(snap_name)
+                                if snap_info:
+                                    st.caption(f"快照保存时: 收益 {snap_info.get('total_return_pct', 0):.2f}%, 资金 {snap_info.get('final_cash', 0):.2f}")
+                                
                                 col_m1, col_m2, col_m3, col_m4 = st.columns(4)
                                 with col_m1:
                                     st.metric("TOTAL RETURN", f"{metrics.get('total_return_pct', 0):.2f}%")
@@ -1377,6 +1503,8 @@ def quant_page():
                                     st.metric("MAX DD", f"{metrics.get('max_drawdown_pct', 0):.2f}%")
                                 with col_m4:
                                     st.metric("TRADES", metrics.get("total_trades", 0))
+                                
+                                st.info("快照已恢复并运行完成。上方指标为 Phase 2（新数据段）的表现。如需使用其他日期或数据再次运行，可调整左侧参数后重新点击'恢复并运行'。")
                             else:
                                 st.error(f"恢复失败: {result.get('error', 'Unknown')}")
                     except Exception as e:
@@ -1409,7 +1537,7 @@ def quant_page():
             if current_slots:
                 for slot_data in current_slots:
                     slot_id = slot_data["slot_id"]
-                    with st.expander(f"Slot: {slot_id}", expanded=False):
+                    with st.expander(f"槽位 Slot: {slot_id}", expanded=False):
                         st.json(slot_data)
                         if st.button(f"移除 {slot_id}", key=f"remove_slot_{slot_id}"):
                             simulator.remove_slot(slot_id)
@@ -1428,7 +1556,13 @@ def quant_page():
                 key="new_slot_strategy"
             )
             new_slot_weight = st.number_input("资金权重", value=1.0, min_value=0.1, key="new_slot_weight")
-            new_slot_max_size = st.number_input("最大下单量", value=10, min_value=1, key="new_slot_max_size")
+            new_slot_max_size = st.number_input(
+                "最大下单量",
+                value=100,
+                min_value=1,
+                key="new_slot_max_size",
+                help="当前策略默认下单 100 股，若设置小于 100 订单会被风控拒绝"
+            )
             
             if st.button("添加槽位", key="add_slot"):
                 try:
@@ -1460,19 +1594,25 @@ def quant_page():
                 else:
                     with st.spinner("运行多策略回测..."):
                         try:
-                            df = _load_market_data("模拟数据 (MOCK)", multi_symbol,
-                                                   datetime(2022, 1, 1), datetime(2023, 12, 31))
+                            # 使用与单策略相同的真实数据源和日期
+                            df = _load_market_data(quant_data_source, multi_symbol,
+                                                   quant_start_date, quant_end_date)
                             
                             if df is not None:
+                                st.text(f"[DEBUG] 多策略数据: {len(df)} 条, 标的={multi_symbol}")
                                 result = simulator.run_simulation(
                                     data=df,
                                     symbols=multi_symbol,
                                     initial_cash=multi_initial_cash,
+                                    start_date=quant_start_str,
+                                    end_date=quant_end_str,
                                 )
                                 
                                 st.session_state.multi_result = result
                         except Exception as e:
                             st.error(f"多策略回测失败: {e}")
+                            import traceback
+                            st.code(traceback.format_exc())
         
         with slot_result:
             if "multi_result" in st.session_state:
@@ -1519,27 +1659,62 @@ def _load_market_data(data_source, symbol, start_date, end_date):
     start_date_str = start_date.strftime("%Y%m%d") if hasattr(start_date, 'strftime') else str(start_date)
     end_date_str = end_date.strftime("%Y%m%d") if hasattr(end_date, 'strftime') else str(end_date)
     
-    if data_source == "AKSHARE (股票)":
+    if data_source in ("AKSHARE (股票)", "AKShare 股票数据"):
         import akshare as ak
-        df = ak.stock_zh_a_daily(symbol=symbol, start_date=start_date_str, end_date=end_date_str)
+        # 判断是否为指数，指数用专用接口
+        is_index = False
+        if symbol.startswith(("sh", "sz")) and len(symbol) == 8 and symbol[2:].isdigit():
+            num = symbol[2:]
+            if num.startswith(("000", "399")):
+                is_index = True
+        # 纯数字指数（如 000300, 399001）已在 parse_symbol 中转为 sz/sh 前缀
+        if is_index:
+            df = ak.stock_zh_index_daily(symbol=symbol)
+            # 统一 date 为字符串，避免 Timestamp / datetime.date 混用导致 AKQuant 过滤异常
+            df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+            df = df[(df['date'] >= f"{start_date_str[:4]}-{start_date_str[4:6]}-{start_date_str[6:]}") & 
+                    (df['date'] <= f"{end_date_str[:4]}-{end_date_str[4:6]}-{end_date_str[6:]}")]
+        else:
+            df = ak.stock_zh_a_daily(symbol=symbol, start_date=start_date_str, end_date=end_date_str)
+            # 个股也统一 date 格式
+            if 'date' in df.columns:
+                df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+        # 确保 date 列存在（AKShare 某些版本会把它设为 index）
+        if 'date' not in df.columns:
+            if df.index.name == 'date':
+                df = df.reset_index()
+                df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+            elif len(df.columns) > 0:
+                df = df.reset_index(drop=True)
+                first_col = df.columns[0]
+                df = df.rename(columns={first_col: 'date'})
+                df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+        # 统一 volume 为 float64，避免指数 volume（int64，可达千亿）在 AKQuant 中 int32 溢出成负数
+        if 'volume' in df.columns:
+            df['volume'] = df['volume'].astype('float64')
+        # 只保留 AKQuant 需要的核心列，保持指数和个股列一致
+        core_cols = ['date', 'open', 'high', 'low', 'close', 'volume']
+        keep_cols = [c for c in core_cols if c in df.columns]
+        df = df[keep_cols].copy()
         df["symbol"] = symbol
     else:
-        # 生成模拟数据
+        # 生成模拟数据（使用 symbol 的 hash 作为种子，保证不同股票有不同的模拟走势）
         dates = pd.date_range(
             start=start_date_str[:4] + "-" + start_date_str[4:6] + "-" + start_date_str[6:],
             end=end_date_str[:4] + "-" + end_date_str[4:6] + "-" + end_date_str[6:]
         )
         n = len(dates)
-        np.random.seed(42)
+        seed = hash(symbol) % 10000
+        np.random.seed(seed)
         returns = np.random.normal(0.0005, 0.02, n)
         price = 100 * np.cumprod(1 + returns)
         df = pd.DataFrame({
-            "date": dates,
+            "date": dates.strftime('%Y-%m-%d'),
             "open": price,
             "high": price * 1.01,
             "low": price * 0.99,
             "close": price,
-            "volume": 10000,
+            "volume": 10000.0,
             "symbol": symbol
         })
     
@@ -1548,16 +1723,39 @@ def _load_market_data(data_source, symbol, start_date, end_date):
 
 def _execute_backtest(data_source, symbol, start_date_str, end_date_str,
                       strategy_type, strategy_params, strategy_name,
-                      initial_cash, commission, enable_benchmark):
+                      initial_cash, commission, benchmark_type):
     """执行回测的辅助函数"""
-    with st.spinner("Running backtest..."):
+    with st.spinner("Running back测..."):
         try:
             df = _load_market_data(data_source, symbol, start_date_str, end_date_str)
             
             if df is not None:
                 benchmark_returns = None
-                if enable_benchmark:
-                    benchmark_returns = (df.set_index("date")["close"].pct_change().fillna(0.0).rename("BENCHMARK"))
+                if benchmark_type and benchmark_type != "无":
+                    if benchmark_type == "买入并持有 (Buy & Hold)":
+                        bench_series = df.set_index("date")["close"]
+                        # 统一 index 为 DatetimeIndex，便于和回测结果对齐
+                        bench_series.index = pd.to_datetime(bench_series.index)
+                        benchmark_returns = bench_series.pct_change().fillna(0.0).rename("BENCHMARK")
+                    else:
+                        # 提取指数代码
+                        bench_symbol = benchmark_type.split()[-1]
+                        try:
+                            import akshare as ak
+                            bench_df = ak.stock_zh_index_daily(symbol=bench_symbol)
+                            bench_df['date'] = pd.to_datetime(bench_df['date'])
+                            start_dt = pd.to_datetime(start_date_str)
+                            end_dt = pd.to_datetime(end_date_str)
+                            bench_df = bench_df[(bench_df['date'] >= start_dt) & (bench_df['date'] <= end_dt)]
+                            benchmark_returns = bench_df.set_index("date")["close"].pct_change().fillna(0.0).rename("BENCHMARK")
+                        except Exception as bench_err:
+                            st.warning(f"基准 {benchmark_type} 获取失败，回退为买入并持有: {bench_err}")
+                            bench_series = df.set_index("date")["close"]
+                            bench_series.index = pd.to_datetime(bench_series.index)
+                            benchmark_returns = bench_series.pct_change().fillna(0.0).rename("BENCHMARK")
+                    # 调试：显示基准数据信息
+                    if benchmark_returns is not None:
+                        st.text(f"[DEBUG] 基准数据: {len(benchmark_returns)} 条, 类型: {type(benchmark_returns).__name__}, index类型: {type(benchmark_returns.index).__name__}")
                 
                 st.success(f"✓ Data loaded: {len(df)} bars")
                 
@@ -1573,9 +1771,16 @@ def _execute_backtest(data_source, symbol, start_date_str, end_date_str,
                     end_date=end_date_str,
                     initial_cash=initial_cash,
                     commission_rate=commission,
-                    benchmark_data=benchmark_returns,
                     on_event=stream_callback
                 )
+                
+                # 调试：显示基准收益率
+                if benchmark_returns is not None:
+                    try:
+                        bench_total = (1 + benchmark_returns).cumprod().iloc[-1] - 1
+                        st.text(f"[DEBUG] 基准类型={benchmark_type}, 基准总收益率={bench_total*100:.2f}%")
+                    except Exception as dbg_err:
+                        st.text(f"[DEBUG] 基准计算异常: {dbg_err}")
                 
                 _display_backtest_result(result, strategy_name, symbol, df, benchmark_returns)
             else:
@@ -1611,45 +1816,79 @@ def _display_backtest_result(result, strategy_name, symbol, df, benchmark_return
         with col4:
             st.metric("TRADES", metrics.get("total_trades", 0))
         
+        # 如果有基准，在顶部直接展示基准对比（一目了然）
+        if benchmark_returns is not None and len(benchmark_returns) > 0:
+            try:
+                bench_total = (1 + benchmark_returns).cumprod().iloc[-1] - 1
+                bench_total_pct = bench_total * 100
+                excess_pct = metrics.get('total_return_pct', 0) - bench_total_pct
+                st.markdown("#### BENCHMARK COMPARISON")
+                bc1, bc2 = st.columns(2)
+                with bc1:
+                    st.metric("基准总收益率", f"{bench_total_pct:.2f}%")
+                with bc2:
+                    delta_color = "normal" if excess_pct >= 0 else "inverse"
+                    st.metric("超额收益 (Alpha)", f"{excess_pct:.2f}%", delta="↑" if excess_pct >= 0 else "↓", delta_color=delta_color)
+            except Exception as e:
+                st.warning(f"基准对比计算失败: {e}")
+        
         # 详细指标表格
         st.markdown("#### DETAILED METRICS")
-        metrics_df = pd.DataFrame([
+        rows = [
             {"指标": "年化收益率", "数值": f"{metrics.get('annualized_return', 0):.2f}%"},
             {"指标": "胜率", "数值": f"{metrics.get('win_rate', 0):.1f}%"},
             {"指标": "夏普比率", "数值": f"{metrics.get('sharpe_ratio', 0):.2f}"},
             {"指标": "最大回撤", "数值": f"{metrics.get('max_drawdown_pct', 0):.2f}%"},
-            {"指标": "总交易次数", "数值": metrics.get("total_trades", 0)},
+            {"指标": "总交易次数", "数值": str(int(metrics.get("total_trades", 0)))},
             {"指标": "最终资产", "数值": f"¥{metrics.get('final_value', 0):,.2f}"},
-        ])
-        st.dataframe(metrics_df, width='stretch', hide_index=True)
+        ]
+        # 如果有基准，在表格里也展示基准对比指标
+        if benchmark_returns is not None and len(benchmark_returns) > 0:
+            try:
+                bench_total = (1 + benchmark_returns).cumprod().iloc[-1] - 1
+                bench_total_pct = bench_total * 100
+                excess_pct = metrics.get('total_return_pct', 0) - bench_total_pct
+                rows.insert(1, {"指标": "基准总收益率", "数值": f"{bench_total_pct:.2f}%"})
+                rows.insert(2, {"指标": "超额收益 (Alpha)", "数值": f"{excess_pct:.2f}%"})
+            except Exception:
+                pass
+        try:
+            metrics_df = pd.DataFrame(rows)
+            st.dataframe(metrics_df, width='stretch', hide_index=True)
+        except Exception as e:
+            st.error(f"指标表格显示失败: {e}")
+            st.json(rows)
         
         # 生成报告
         st.divider()
         st.markdown("### VISUALIZATION")
         
-        report_path = generate_report(
-            result,
-            strategy_name=strategy_name,
-            symbol=symbol,
-            market_data=df,
-            benchmark_data=benchmark_returns
-        )
-        
-        if report_path and Path(report_path).exists():
-            with open(report_path, 'r', encoding='utf-8') as f:
-                report_html = f.read()
-            st.components.v1.html(report_html, height=600, scrolling=True)
+        try:
+            report_path = generate_report(
+                result,
+                strategy_name=strategy_name,
+                symbol=symbol,
+                market_data=df,
+                benchmark_data=benchmark_returns
+            )
             
-            with open(report_path, 'rb') as f:
-                st.download_button(
-                    "DOWNLOAD REPORT (HTML)",
-                    data=f,
-                    file_name=Path(report_path).name,
-                    mime="text/html",
-                    width='stretch'
-                )
-        else:
-            st.info("报告生成中，请在命令行查看...")
+            if report_path and Path(report_path).exists():
+                with open(report_path, 'r', encoding='utf-8') as f:
+                    report_html = f.read()
+                st.components.v1.html(report_html, height=600, scrolling=True)
+                
+                with open(report_path, 'rb') as f:
+                    st.download_button(
+                        "下载报告 DOWNLOAD REPORT (HTML)",
+                        data=f,
+                        file_name=Path(report_path).name,
+                        mime="text/html",
+                        width='stretch'
+                    )
+            else:
+                st.info("报告未生成，请在命令行查看是否有报错...")
+        except Exception as rep_err:
+            st.error(f"报告生成失败: {rep_err}")
             
     else:
         st.error(f"Backtest failed: {result.get('error', 'Unknown error')}")
@@ -1657,18 +1896,14 @@ def _display_backtest_result(result, strategy_name, symbol, df, benchmark_return
 
 
 def kg_page():
-    """知识图谱页面"""
-    st.markdown('<h1 class="main-header">KNOWLEDGE GRAPH</h1>', unsafe_allow_html=True)
+    """知识图谱页面 - 金融视角，3大分析模式"""
+    st.markdown('<h1 class="main-header">KNOWLEDGE GRAPH 知识图谱</h1>', unsafe_allow_html=True)
     init_session_state()
 
     # 尝试导入 KG 模块
     try:
         from src.knowledge_graph import (
-            KnowledgeGraphRetriever,
-            get_kg_retriever,
-            check_kg_status,
-            EntityType,
-            RelationType
+            get_kg_retriever, check_kg_status, get_neo4j_connection
         )
         KG_AVAILABLE = True
     except ImportError as e:
@@ -1678,7 +1913,6 @@ def kg_page():
     with st.sidebar:
         st.markdown("### KG SETTINGS")
 
-        # 检查状态
         if KG_AVAILABLE:
             status, msg = check_kg_status()
             if status:
@@ -1687,15 +1921,17 @@ def kg_page():
                 st.warning(f"⚠ {msg}")
         else:
             st.error("KG 模块未安装")
+            status = False
 
         st.divider()
 
-        # 查询类型选择
-        st.markdown("### QUERY TYPE")
+        # 3大分析模式
+        st.markdown("### ANALYSIS MODE")
         query_mode = st.radio(
-            "SELECT MODE",
-            ["关系查询", "影响分析", "实体搜索", "导入数据"],
-            horizontal=False
+            "选择分析模式",
+            ["智能检索", "链路追踪", "全景洞察"],
+            horizontal=False,
+            help="智能检索=找实体和邻居 | 链路追踪=路径/风险传导 | 全景洞察=看整体结构"
         )
 
         st.divider()
@@ -1704,323 +1940,445 @@ def kg_page():
         if KG_AVAILABLE and status:
             st.markdown("### STATISTICS")
             try:
-                retriever = get_kg_retriever()
-                # 获取统计（如果连接可用）
-                st.info("图谱已连接")
+                conn = get_neo4j_connection()
+                node_res = conn.execute_query("MATCH (n) RETURN labels(n)[0] as label, count(n) as cnt")
+                total_nodes = sum(r.get("cnt", 0) for r in node_res)
+                st.metric("Total Nodes", total_nodes)
+                rel_res = conn.execute_query("MATCH ()-[r]->() RETURN type(r) as type, count(r) as cnt")
+                total_rels = sum(r.get("cnt", 0) for r in rel_res)
+                st.metric("Total Relations", total_rels)
+                if node_res:
+                    with st.expander("节点详情", expanded=False):
+                        for r in node_res:
+                            st.caption(f"{r.get('label', '?')}: {r.get('cnt', 0)}")
             except Exception as e:
                 st.warning(f"无法获取统计: {e}")
+
+            st.divider()
+            st.markdown("### DATA UPDATE")
+            try:
+                from src.kg_crawler.scheduler import get_kg_scheduler
+                scheduler = get_kg_scheduler()
+                sched_status = scheduler.get_status()
+                st.caption(f"Scheduler: {'Running' if sched_status['running'] else 'Stopped'}")
+                for name, info in sched_status.get("tasks", {}).items():
+                    col_a, col_b = st.columns([3, 1])
+                    with col_a:
+                        st.caption(f"**{name}** ({info['schedule_type']})")
+                    with col_b:
+                        badge = "🟢" if info['status'] in ("success", "registered") else "🔴"
+                        st.caption(f"{badge} {info['run_count']}次")
+                    if info.get("last_run"):
+                        st.caption(f"Last: {info['last_run'][:19]}")
+            except Exception as e:
+                st.caption(f"Scheduler: 未启动")
+
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                if st.button("🕷️ 爬新闻", key="btn_crawl_news"):
+                    with st.spinner("爬取中..."):
+                        try:
+                            from src.kg_crawler.scheduler import task_crawl_news
+                            result = task_crawl_news()
+                            st.success(f"完成: {result}")
+                        except Exception as e:
+                            st.error(f"失败: {e}")
+            with c2:
+                if st.button("📈 更新股票", key="btn_update_stocks"):
+                    with st.spinner("更新中..."):
+                        try:
+                            from src.kg_crawler.scheduler import task_update_stocks
+                            result = task_update_stocks()
+                            st.success(f"完成: {result}")
+                        except Exception as e:
+                            st.error(f"失败: {e}")
+            with c3:
+                if st.button("🏭 更新行业", key="btn_update_sectors"):
+                    with st.spinner("更新中..."):
+                        try:
+                            from src.kg_crawler.scheduler import task_update_sectors
+                            result = task_update_sectors()
+                            st.success(f"完成: {result}")
+                        except Exception as e:
+                            st.error(f"失败: {e}")
+
+            st.divider()
+            # 导入数据作为独立入口
+            with st.expander("📥 数据管理", expanded=False):
+                if st.button("打开数据导入面板", key="btn_open_import"):
+                    st.session_state.show_import_panel = True
 
     # 主内容区域
     if not KG_AVAILABLE or not status:
         st.warning(
             "### 知识图谱未连接\n\n"
             "请确保:\n"
-            "1. Neo4j 已启动 (docker run -p 7474:7474 -p 7687:7687 neo4j:5)\n"
-            "2. 环境变量已配置 (.env 文件中的 NEO4J_URI, NEO4J_PASSWORD)\n"
+            "1. Neo4j 已启动\n"
+            "2. 环境变量已配置 (.env 文件)\n"
             "3. pip install neo4j\n\n"
             "安装后重启应用。"
         )
         return
 
-    # 查询功能
-    if query_mode == "关系查询":
-        st.markdown("### 关系查询")
+    # ==================== 模式一：智能检索 ====================
+    if query_mode == "智能检索":
+        st.markdown("### 智能检索")
+        st.caption("输入公司/产品/人名，获取完整画像（属性 + 一阶邻居）")
 
-        # 输入框
-        query_input = st.text_input(
-            "输入公司/行业名称",
-            placeholder="例如: 苹果, 腾讯, 科技行业",
-            help="查询公司或行业的关系网络"
-        )
-
-        # 快速示例
-        st.markdown("**快速查询:**")
-        col1, col2, col3 = st.columns(3)
-
-        examples = {
-            "苹果 Apple": "Apple",
-            "微软 Microsoft": "Microsoft",
-            "谷歌 Google": "Google"
-        }
-
-        for i, (label, name) in enumerate(examples.items()):
-            col = [col1, col2, col3][i]
-            if col.button(label, width='stretch'):
-                query_input = name
-
-        if st.button("查询关系", type="primary", width='stretch') and query_input:
-            with st.spinner("查询中..."):
-                try:
-                    retriever = get_kg_retriever()
-                    result = retriever.query(f"{query_input}的关系有哪些？")
-
-                    if result.entities:
-                        st.success(f"✓ {result.explanation}")
-
-                        # 显示实体列表
-                        st.markdown("#### 相关实体")
-                        entities_df = pd.DataFrame(result.entities)
-                        if not entities_df.empty:
-                            st.dataframe(entities_df, width='stretch', hide_index=True)
-
-                        # 显示关系
-                        if result.relations:
-                            st.markdown("#### 关系网络")
-                            relations_df = pd.DataFrame(result.relations)
-                            if not relations_df.empty:
-                                st.dataframe(relations_df, width='stretch', hide_index=True)
-                    else:
-                        st.info("未找到相关结果")
-
-                except Exception as e:
-                    st.error(f"查询失败: {e}")
-
-    elif query_mode == "影响分析":
-        st.markdown("### 影响分析")
-
-        # 事件输入
-        event_input = st.text_input(
-            "输入事件名称",
-            placeholder="例如: 加息, 降息, 财报",
-            help="分析特定事件的影响"
-        )
-
-        # 事件示例
-        st.markdown("**常见事件:**")
-        event_examples = ["加息", "降息", "贸易战", "财报季"]
-        selected_event = st.selectbox("或选择事件", [""] + event_examples)
-
-        if selected_event:
-            event_input = selected_event
-
-        if st.button("分析影响", type="primary", width='stretch') and event_input:
-            with st.spinner("分析中..."):
-                try:
-                    retriever = get_kg_retriever()
-                    result = retriever.query(f"{event_input}对哪些公司有影响？")
-
-                    if result.entities:
-                        st.success(f"✓ {result.explanation}")
-
-                        # 显示受影响实体
-                        st.markdown("#### 受影响的实体")
-                        entities_df = pd.DataFrame(result.entities)
-                        if not entities_df.empty:
-                            st.dataframe(entities_df, width='stretch', hide_index=True)
-
-                        # 可视化影响链
-                        if result.paths:
-                            st.markdown("#### 影响路径")
-                            for i, path in enumerate(result.paths[:5], 1):
-                                path_str = " → ".join([n.get("name", "") for n in path if n.get("name")])
-                                if path_str:
-                                    st.markdown(f"`{i}. {path_str}`")
-                    else:
-                        st.info("未找到影响路径")
-
-                except Exception as e:
-                    st.error(f"分析失败: {e}")
-
-    elif query_mode == "实体搜索":
-        st.markdown("### 实体搜索")
-
-        # 搜索类型
-        search_type = st.selectbox(
-            "实体类型",
-            ["全部", "公司 Company", "人物 Person", "行业 Sector", "事件 Event"]
-        )
-
-        type_map = {
-            "全部": None,
-            "公司 Company": "Company",
-            "人物 Person": "Person",
-            "行业 Sector": "Sector",
-            "事件 Event": "Event"
-        }
-
-        # 搜索关键词
         search_input = st.text_input(
-            "搜索关键词",
-            placeholder="输入实体名称",
-            help="搜索特定的实体"
+            "搜索",
+            placeholder="例如: 英伟达, 中芯国际, AI芯片, 台积电",
+            help="支持模糊匹配"
         )
 
-        if st.button("搜索", type="primary", width='stretch'):
-            with st.spinner("搜索中..."):
+        if st.button("检索", type="primary", use_container_width=True) and search_input:
+            with st.spinner("检索中..."):
                 try:
-                    retriever = get_kg_retriever()
+                    conn = get_neo4j_connection()
+                    # 1. 匹配实体
+                    entity_query = """
+                        MATCH (e)
+                        WHERE toLower(e.name) CONTAINS toLower($name)
+                           OR toLower($name) CONTAINS toLower(e.name)
+                        RETURN labels(e)[0] AS type, e.name AS name, properties(e) AS props
+                        LIMIT 20
+                    """
+                    entities = conn.execute_query(entity_query, {"name": search_input})
 
-                    if search_input:
-                        result = retriever.query(f"查找{search_input}相关的实体")
+                    if not entities:
+                        st.info("未找到匹配实体")
                     else:
-                        result = retriever.query("查找金融相关的实体")
+                        for ent in entities:
+                            etype = ent.get("type", "Unknown")
+                            name = ent.get("name", "")
+                            props = ent.get("props", {})
 
-                    if result.entities:
-                        # 按类型筛选
-                        entities = result.entities
-                        if type_map[search_type]:
-                            entities = [e for e in entities if e.get("type") == type_map[search_type]]
+                            with st.container(border=True):
+                                st.markdown(f"**{name}** `({etype})`")
+                                if props:
+                                    prop_text = " | ".join([f"{k}: {v}" for k, v in list(props.items())[:5] if k != "updated_at"])
+                                    st.caption(prop_text)
 
-                        st.success(f"找到 {len(entities)} 个实体")
-
-                        if entities:
-                            df = pd.DataFrame(entities)
-                            st.dataframe(df, width='stretch', hide_index=True)
-                    else:
-                        st.info("未找到相关实体")
-
+                                # 一阶邻居
+                                neighbor_query = """
+                                    MATCH (e {name: $name})-[r]-(n)
+                                    RETURN type(r) AS rel, labels(n)[0] AS ntype, n.name AS nname
+                                    LIMIT 20
+                                """
+                                neighbors = conn.execute_query(neighbor_query, {"name": name})
+                                if neighbors:
+                                    st.markdown("**关联实体:**")
+                                    for nb in neighbors:
+                                        st.caption(f"  → {nb['nname']} ({nb['ntype']}) [{nb['rel']}]")
+                                else:
+                                    st.caption("暂无关联数据")
                 except Exception as e:
-                    st.error(f"搜索失败: {e}")
+                    st.error(f"检索失败: {e}")
 
-    elif query_mode == "导入数据":
-        st.markdown("### 导入数据")
+    # ==================== 模式二：链路追踪 ====================
+    elif query_mode == "链路追踪":
+        st.markdown("### 链路追踪")
+        st.caption("从A到B的路径发现 | 上游风险传导 | 下游依赖分析")
 
-        # 标签页切换
-        tab_text, tab_folder, tab_cypher = st.tabs(["手动输入", "文件夹导入", "Cypher 查询"])
+        track_type = st.selectbox(
+            "追踪类型",
+            [
+                "起点→终点 路径发现",
+                "上游风险传导（谁依赖X）",
+                "下游影响分析（X影响谁）",
+                "股权/供应深度追踪"
+            ]
+        )
 
-        with tab_text:
-            st.info(
-                "输入文本，LLM 将自动抽取实体和关系到知识图谱。\n\n"
-                "**示例文本:**\n"
-                "```\n"
-                "苹果公司(Apple)是全球领先的科技公司，CEO为Tim Cook。\n"
-                "苹果与微软在操作系统领域存在竞争关系。\n"
-                "```"
+        if track_type == "起点→终点 路径发现":
+            c1, c2 = st.columns(2)
+            with c1:
+                start = st.text_input("起点", placeholder="例如: 英伟达")
+            with c2:
+                end = st.text_input("终点", placeholder="例如: 特斯拉")
+            max_depth = st.slider("最大深度", 1, 5, 3)
+            relation_filter = st.multiselect(
+                "关系类型过滤",
+                ["BELONGS_TO", "OUTSOURCES_TO", "MANUFACTURES_FOR", "COMPETES_WITH", "SUPPLIES", "DESIGNS", "PURCHASES"],
+                default=["OUTSOURCES_TO", "MANUFACTURES_FOR", "SUPPLIES", "DESIGNS", "PURCHASES"]
             )
+            if st.button("发现路径", type="primary") and start and end:
+                with st.spinner("搜索路径..."):
+                    try:
+                        conn = get_neo4j_connection()
+                        rel_types = "|".join(relation_filter) if relation_filter else "*"
+                        query = f"""
+                            MATCH (a), (b)
+                            WHERE toLower(a.name) CONTAINS toLower($start)
+                               OR toLower($start) CONTAINS toLower(a.name)
+                            WHERE toLower(b.name) CONTAINS toLower($end)
+                               OR toLower($end) CONTAINS toLower(b.name)
+                            MATCH path = (a)-[r:{rel_types}*1..{max_depth}]->(b)
+                            RETURN [n IN nodes(path) | {{name: n.name, type: labels(n)[0]}}] AS chain,
+                                   [rel IN relationships(path) | type(rel)] AS rels
+                            LIMIT 10
+                        """
+                        results = conn.execute_query(query, {"start": start, "end": end})
+                        if results:
+                            st.success(f"找到 {len(results)} 条路径")
+                            for i, row in enumerate(results, 1):
+                                chain = row.get("chain", [])
+                                rels = row.get("rels", [])
+                                path_str = ""
+                                for j, node in enumerate(chain):
+                                    path_str += f"**{node['name']}**"
+                                    if j < len(rels):
+                                        path_str += f" —[{rels[j]}]→ "
+                                st.markdown(f"`{i}.` {path_str}")
+                        else:
+                            st.info("未找到路径（图谱中关系不足）")
+                    except Exception as e:
+                        st.error(f"查询失败: {e}")
 
-            doc_input = st.text_area(
-                "输入文档内容",
-                placeholder="在此输入要分析的金融文档...",
-                height=200
+        elif track_type == "上游风险传导（谁依赖X）":
+            entity = st.text_input("输入风险源头", placeholder="例如: 台积电, 光刻机, 台湾")
+            max_depth = st.slider("传导深度", 1, 4, 2)
+            if st.button("分析上游风险", type="primary") and entity:
+                with st.spinner("分析中..."):
+                    try:
+                        conn = get_neo4j_connection()
+                        query = f"""
+                            MATCH (risk)
+                            WHERE toLower(risk.name) CONTAINS toLower($entity)
+                               OR toLower($entity) CONTAINS toLower(risk.name)
+                            MATCH path = (victim)-[*1..{max_depth}]->(risk)
+                            RETURN DISTINCT victim.name AS victim,
+                                    labels(victim)[0] AS vtype,
+                                    length(path) AS depth
+                            ORDER BY depth
+                            LIMIT 50
+                        """
+                        results = conn.execute_query(query, {"entity": entity})
+                        if results:
+                            st.success(f"**{entity}** 上游风险传导")
+                            df = pd.DataFrame(results)
+                            st.dataframe(df, width='stretch', hide_index=True)
+                        else:
+                            st.info("未找到依赖该实体的公司")
+                    except Exception as e:
+                        st.error(f"查询失败: {e}")
+
+        elif track_type == "下游影响分析（X影响谁）":
+            entity = st.text_input("输入影响源头", placeholder="例如: 英伟达, 地震, 断供")
+            max_depth = st.slider("影响深度", 1, 4, 2)
+            if st.button("分析下游影响", type="primary") and entity:
+                with st.spinner("分析中..."):
+                    try:
+                        conn = get_neo4j_connection()
+                        query = f"""
+                            MATCH (source)
+                            WHERE toLower(source.name) CONTAINS toLower($entity)
+                               OR toLower($entity) CONTAINS toLower(source.name)
+                            MATCH path = (source)-[*1..{max_depth}]->(target)
+                            RETURN DISTINCT target.name AS target,
+                                    labels(target)[0] AS ttype,
+                                    length(path) AS depth
+                            ORDER BY depth
+                            LIMIT 50
+                        """
+                        results = conn.execute_query(query, {"entity": entity})
+                        if results:
+                            st.success(f"**{entity}** 下游影响分析")
+                            df = pd.DataFrame(results)
+                            st.dataframe(df, width='stretch', hide_index=True)
+                        else:
+                            st.info("未找到受影响的实体")
+                    except Exception as e:
+                        st.error(f"查询失败: {e}")
+
+        elif track_type == "股权/供应深度追踪":
+            company = st.text_input("输入公司名称")
+            direction = st.radio("方向", ["向上游（供应商/股东）", "向下游（客户/子公司）"], horizontal=True)
+            depth = st.slider("深度", 1, 4, 2)
+            if st.button("深度追踪", type="primary") and company:
+                with st.spinner("追踪中..."):
+                    try:
+                        conn = get_neo4j_connection()
+                        if "向上游" in direction:
+                            query = f"""
+                                MATCH (c:Company)
+                                WHERE toLower(c.name) CONTAINS toLower($company)
+                                MATCH path = (upstream)-[*1..{depth}]->(c)
+                                RETURN DISTINCT upstream.name AS entity,
+                                        labels(upstream)[0] AS etype,
+                                        length(path) AS depth
+                                ORDER BY depth
+                                LIMIT 50
+                            """
+                        else:
+                            query = f"""
+                                MATCH (c:Company)
+                                WHERE toLower(c.name) CONTAINS toLower($company)
+                                MATCH path = (c)-[*1..{depth}]->(downstream)
+                                RETURN DISTINCT downstream.name AS entity,
+                                        labels(downstream)[0] AS etype,
+                                        length(path) AS depth
+                                ORDER BY depth
+                                LIMIT 50
+                            """
+                        results = conn.execute_query(query, {"company": company})
+                        if results:
+                            st.success(f"**{company}** {'上游' if '向上游' in direction else '下游'}深度追踪")
+                            df = pd.DataFrame(results)
+                            st.dataframe(df, width='stretch', hide_index=True)
+                        else:
+                            st.info("未找到关联实体")
+                    except Exception as e:
+                        st.error(f"查询失败: {e}")
+
+    # ==================== 模式三：全景洞察 ====================
+    elif query_mode == "全景洞察":
+        st.markdown("### 全景洞察")
+        st.caption("按行业/概念筛选子图 | 识别中心节点 | 交互式网络")
+
+        insight_tab1, insight_tab2 = st.tabs(["交互式图谱", "子图统计"])
+
+        with insight_tab1:
+            focus = st.text_input(
+                "聚焦实体（可选）",
+                placeholder="留空显示全部图谱，输入则聚焦该实体2跳内邻居",
+                help="例如: 中芯国际"
             )
+            col_a, col_b = st.columns([1, 4])
+            with col_a:
+                if st.button("生成图谱", type="primary"):
+                    st.session_state.kg_visualize = True
+                    st.session_state.kg_focus = focus.strip() or None
+            with col_b:
+                st.caption("拖拽节点 | 滚轮缩放 | 点击详情")
 
-            if st.button("导入到图谱", type="primary", width='stretch', key="import_text"):
-                if not doc_input:
-                    st.warning("请输入文档内容")
-                else:
+            if st.session_state.get("kg_visualize"):
+                with st.spinner("生成中..."):
+                    try:
+                        from src.knowledge_graph import visualize_kg
+                        import streamlit.components.v1 as components
+                        html = visualize_kg(
+                            max_nodes=500,
+                            focus_entity=st.session_state.get("kg_focus")
+                        )
+                        components.html(html, height=650, scrolling=False)
+                    except Exception as e:
+                        st.error(f"可视化失败: {e}")
+
+            with st.expander("图例", expanded=False):
+                st.markdown("""
+                <div style="display:flex;flex-wrap:wrap;gap:1rem;">
+                    <span style="color:#3b82f6">● Company 公司</span>
+                    <span style="color:#10b981">● Sector 板块</span>
+                    <span style="color:#f59e0b">● Product 产品</span>
+                    <span style="color:#ef4444">● Foundry 代工厂</span>
+                    <span style="color:#8b5cf6">● Material 材料</span>
+                    <span style="color:#6b7280">● Location 地点</span>
+                    <span style="color:#eab308">● Event 事件</span>
+                </div>
+                """, unsafe_allow_html=True)
+
+        with insight_tab2:
+            try:
+                conn = get_neo4j_connection()
+                # 中心度分析
+                center_query = """
+                    MATCH (c:Company)-[r]->()
+                    RETURN c.name AS company, count(r) AS degree
+                    ORDER BY degree DESC
+                    LIMIT 15
+                """
+                centers = conn.execute_query(center_query)
+                if centers:
+                    st.markdown("**中心节点（连接数最多）**")
+                    df = pd.DataFrame(centers)
+                    st.dataframe(df, width='stretch', hide_index=True)
+
+                # 板块分布
+                sector_query = """
+                    MATCH (s:Sector)<-[:BELONGS_TO]-(c:Company)
+                    RETURN s.name AS sector, count(c) AS company_count
+                    ORDER BY company_count DESC
+                """
+                sectors = conn.execute_query(sector_query)
+                if sectors:
+                    st.markdown("**板块公司分布**")
+                    df = pd.DataFrame(sectors)
+                    st.dataframe(df, width='stretch', hide_index=True)
+            except Exception as e:
+                st.error(f"统计失败: {e}")
+
+    # ==================== 数据导入弹窗 ====================
+    if st.session_state.get("show_import_panel"):
+        with st.container(border=True):
+            st.markdown("### 📥 数据导入")
+            import_tab1, import_tab2, import_tab3 = st.tabs(["文本导入", "文件夹导入", "Cypher 查询"])
+
+            with import_tab1:
+                doc_input = st.text_area(
+                    "输入文本，LLM 自动抽取实体和关系",
+                    placeholder="粘贴新闻、公告或研报内容...",
+                    height=150
+                )
+                if st.button("导入到图谱", key="import_text_v2"):
+                    if doc_input:
+                        with st.spinner("LLM 抽取中..."):
+                            try:
+                                from src.knowledge_graph import import_from_documents
+                                result = import_from_documents([doc_input])
+                                if result.get("success"):
+                                    st.success(f"导入成功: {result['total_entities']} 实体, {result['total_relations']} 关系")
+                                else:
+                                    st.error(f"失败: {result.get('error')}")
+                            except Exception as e:
+                                st.error(f"导入失败: {e}")
+                    else:
+                        st.warning("请输入内容")
+
+            with import_tab2:
+                kg_docs_dir = Path(__file__).parent.parent / "data" / "kg_docs"
+                st.info(f"将 .md/.txt 文件放入 `{kg_docs_dir}` 后点击导入")
+                if kg_docs_dir.exists():
+                    files = list(kg_docs_dir.glob("*.md")) + list(kg_docs_dir.glob("*.txt"))
+                    st.caption(f"当前有 {len(files)} 个文件")
+                if st.button("批量导入", key="import_folder_v2"):
                     with st.spinner("处理中..."):
                         try:
-                            from src.knowledge_graph import import_from_documents
-
-                            result = import_from_documents([doc_input])
-
+                            from src.knowledge_graph import import_from_directory
+                            result = import_from_directory(str(kg_docs_dir))
                             if result.get("success"):
-                                st.success(
-                                    f"导入成功!\n\n"
-                                    f"- 实体数: {result.get('total_entities', 0)}\n"
-                                    f"- 关系数: {result.get('total_relations', 0)}"
-                                )
+                                st.success(f"完成: {result['total_entities']} 实体, {result['total_relations']} 关系")
                             else:
-                                st.error(f"导入失败: {result.get('error', '未知错误')}")
-
+                                st.error(f"失败: {result.get('error')}")
                         except Exception as e:
-                            st.error(f"导入失败: {e}")
+                            st.error(f"失败: {e}")
 
-        with tab_folder:
-            kg_docs_dir = Path(__file__).parent.parent / "data" / "kg_docs"
+            with import_tab3:
+                cypher_input = st.text_area("Cypher 语句", placeholder="MATCH (n) RETURN n LIMIT 10", height=80)
+                if st.button("执行", key="cypher_exec_v2"):
+                    if cypher_input:
+                        with st.spinner("执行中..."):
+                            try:
+                                conn = get_neo4j_connection()
+                                results = conn.execute_query(cypher_input)
+                                if results:
+                                    st.success(f"返回 {len(results)} 条")
+                                    st.dataframe(pd.DataFrame(results), width='stretch')
+                                else:
+                                    st.info("无结果")
+                            except Exception as e:
+                                st.error(f"失败: {e}")
+                    else:
+                        st.warning("请输入 Cypher")
 
-            st.info(
-                f"将 .md / .txt 文件放入 `data/kg_docs/` 文件夹，然后点击导入。\n\n"
-                f"当前目录: `{kg_docs_dir}`"
-            )
-
-            # 显示已有文件
-            if kg_docs_dir.exists():
-                files = list(kg_docs_dir.glob("*.md")) + list(kg_docs_dir.glob("*.txt"))
-                if files:
-                    st.markdown(f"**已检测到 {len(files)} 个文件:**")
-                    for f in sorted(files):
-                        size_kb = f.stat().st_size / 1024
-                        st.markdown(f"- `{f.name}` ({size_kb:.1f} KB)")
-                else:
-                    st.warning("文件夹中没有 .md 或 .txt 文件")
-            else:
-                st.warning("文件夹不存在，请创建 `data/kg_docs/` 目录")
-
-            if st.button("从文件夹批量导入", type="primary", width='stretch', key="import_folder"):
-                with st.spinner("正在读取文件并抽取实体..."):
-                    try:
-                        from src.knowledge_graph import import_from_directory
-
-                        progress = st.progress(0, text="正在处理...")
-                        result = import_from_directory(str(kg_docs_dir))
-                        progress.progress(1.0, text="处理完成")
-
-                        if result.get("success"):
-                            st.success(
-                                f"导入完成!\n\n"
-                                f"- 处理文件: {result.get('processed_files', 0)} / {result.get('total_files', 0)}\n"
-                                f"- 实体数: {result.get('total_entities', 0)}\n"
-                                f"- 关系数: {result.get('total_relations', 0)}"
-                            )
-                            if result.get("errors"):
-                                with st.expander("查看错误详情"):
-                                    for err in result["errors"]:
-                                        st.error(err)
-                        else:
-                            st.error(f"导入失败: {result.get('error', '未知错误')}")
-
-                    except Exception as e:
-                        st.error(f"导入失败: {e}")
-
-        with tab_cypher:
-            st.markdown("#### 手动 Cypher 查询")
-            cypher_input = st.text_area(
-                "Cypher 语句",
-                placeholder="MATCH (n) RETURN n LIMIT 10",
-                height=100
-            )
-
-            if st.button("执行", width='stretch'):
-                if cypher_input:
-                    with st.spinner("执行中..."):
-                        try:
-                            from src.knowledge_graph import get_neo4j_connection
-
-                            conn = get_neo4j_connection()
-                            results = conn.execute_query(cypher_input)
-
-                            if results:
-                                st.success(f"返回 {len(results)} 条结果")
-                                df = pd.DataFrame(results)
-                                st.dataframe(df, width='stretch')
-                            else:
-                                st.info("无结果")
-
-                        except Exception as e:
-                            st.error(f"查询失败: {e}")
-                else:
-                    st.warning("请输入 Cypher 语句")
-
-    # 使用说明
-    with st.expander("使用指南", expanded=False):
-        st.markdown(
-            "### 知识图谱功能\n\n"
-            "**1. 关系查询**\n"
-            "- 查询公司/行业的完整关系网络\n"
-            "- 支持竞争对手、合作伙伴、上下游关系\n\n"
-            "**2. 影响分析**\n"
-            "- 分析事件对市场的影响路径\n"
-            "- 例如：加息 -> 银行 -> 房地产\n\n"
-            "**3. 实体搜索**\n"
-            "- 按类型搜索实体\n"
-            "- 支持公司、人物、行业、事件\n\n"
-            "**4. 导入数据**\n"
-            "- 从文本自动抽取实体和关系\n"
-            "- 支持手动 Cypher 查询\n\n"
-            "### 连接 Neo4j\n\n"
-            "```bash\n"
-            "# 启动 Neo4j\n"
-            "docker run -p 7474:7474 -p 7687:7687 neo4j:5\n\n"
-            "# 安装驱动\n"
-            "pip install neo4j\n"
-            "```"
-        )
+            if st.button("关闭导入面板", use_container_width=True):
+                st.session_state.show_import_panel = False
+                st.rerun()
 
 
 def market_page():
     """股票行情展示页面"""
-    st.markdown('<h1 class="main-header">MARKET</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">MARKET 行情</h1>', unsafe_allow_html=True)
     init_session_state()
     
     # 检查 AKShare 是否可用
@@ -2033,7 +2391,7 @@ def market_page():
         return
     
     with st.sidebar:
-        st.markdown("### MARKET SETTINGS")
+        st.markdown("### 行情设置 MARKET SETTINGS")
         
         # 常用股票/指数快捷选择
         st.markdown("**快捷选择:**")
@@ -2153,50 +2511,76 @@ def market_page():
     try:
         with st.spinner("获取行情数据..."):
             # 获取实时行情
-            try:
-                if symbol.startswith(("sh", "sz")):
+            stock_info = None
+            if symbol.startswith(("sh", "sz")):
+                try:
                     df_realtime = ak.stock_zh_a_spot_em()
-                    stock_info = df_realtime[df_realtime['代码'] == symbol[2:]].iloc[0]
-                    
-                    # 实时行情卡片
-                    col1, col2, col3, col4, col5 = st.columns(5)
-                    
-                    price = float(stock_info['最新价'])
-                    change = float(stock_info['涨跌幅'])
-                    volume = float(stock_info['成交量'])
-                    amount = float(stock_info['成交额'])
-                    high = float(stock_info['最高'])
-                    low = float(stock_info['最低'])
-                    open_price = float(stock_info['今开'])
-                    prev_close = float(stock_info['昨收'])
-                    
-                    with col1:
-                        st.metric("最新价", f"¥{price:.2f}", f"{change:+.2f}%")
-                    with col2:
-                        st.metric("最高", f"¥{high:.2f}")
-                    with col3:
-                        st.metric("最低", f"¥{low:.2f}")
-                    with col4:
-                        st.metric("成交量", f"{volume/10000:.2f}万")
-                    with col5:
-                        st.metric("成交额", f"¥{amount/100000000:.2f}亿")
-                    
-                    st.divider()
-                    
-                    # 详细信息
-                    col_info1, col_info2, col_info3 = st.columns(3)
-                    with col_info1:
-                        st.text(f"今开: ¥{open_price:.2f}")
-                        st.text(f"昨收: ¥{prev_close:.2f}")
-                    with col_info2:
-                        st.text(f"涨停: ¥{prev_close*1.1:.2f}")
-                        st.text(f"跌停: ¥{prev_close*0.9:.2f}")
-                    with col_info3:
-                        st.text(f"市值: {stock_info.get('总市值', 'N/A')}")
-                        st.text(f"流通市值: {stock_info.get('流通市值', 'N/A')}")
-                        
-            except Exception as e:
-                st.warning(f"实时行情获取失败: {e}")
+                    matched = df_realtime[df_realtime['代码'] == symbol[2:]]
+                    if not matched.empty:
+                        stock_info = matched.iloc[0]
+                except Exception as em_err:
+                    # 尝试新浪备用接口
+                    try:
+                        df_realtime = ak.stock_zh_a_spot()
+                        col_map = {
+                            "symbol": "代码", "trade": "最新价", "changepercent": "涨跌幅",
+                            "volume": "成交量", "amount": "成交额", "high": "最高",
+                            "low": "最低", "open": "今开", "settlement": "昨收",
+                            "mktcap": "总市值", "nmc": "流通市值",
+                        }
+                        df_realtime = df_realtime.rename(columns={k: v for k, v in col_map.items() if k in df_realtime.columns})
+                        # 新浪代码可能带后缀如 sh600519，需统一
+                        if "代码" in df_realtime.columns:
+                            df_realtime["代码"] = df_realtime["代码"].astype(str).str.replace(r"^(sh|sz)", "", regex=True)
+                            matched = df_realtime[df_realtime["代码"] == symbol[2:]]
+                            if not matched.empty:
+                                stock_info = matched.iloc[0]
+                    except Exception:
+                        st.info(f"实时行情接口暂不可用（{str(em_err)[:40]}...），以下方K线数据为准")
+
+            if stock_info is not None:
+                # 实时行情卡片
+                col1, col2, col3, col4, col5 = st.columns(5)
+
+                def _safe_float(val, default=0.0):
+                    try:
+                        return float(val)
+                    except Exception:
+                        return default
+
+                price = _safe_float(stock_info.get('最新价'))
+                change = _safe_float(stock_info.get('涨跌幅'))
+                volume = _safe_float(stock_info.get('成交量'))
+                amount = _safe_float(stock_info.get('成交额'))
+                high = _safe_float(stock_info.get('最高'))
+                low = _safe_float(stock_info.get('最低'))
+                open_price = _safe_float(stock_info.get('今开'))
+                prev_close = _safe_float(stock_info.get('昨收'))
+
+                with col1:
+                    st.metric("最新价", f"¥{price:.2f}", f"{change:+.2f}%")
+                with col2:
+                    st.metric("最高", f"¥{high:.2f}")
+                with col3:
+                    st.metric("最低", f"¥{low:.2f}")
+                with col4:
+                    st.metric("成交量", f"{volume/10000:.2f}万")
+                with col5:
+                    st.metric("成交额", f"¥{amount/100000000:.2f}亿")
+
+                st.divider()
+
+                # 详细信息
+                col_info1, col_info2, col_info3 = st.columns(3)
+                with col_info1:
+                    st.text(f"今开: ¥{open_price:.2f}")
+                    st.text(f"昨收: ¥{prev_close:.2f}")
+                with col_info2:
+                    st.text(f"涨停: ¥{prev_close*1.1:.2f}")
+                    st.text(f"跌停: ¥{prev_close*0.9:.2f}")
+                with col_info3:
+                    st.text(f"市值: {stock_info.get('总市值', 'N/A')}")
+                    st.text(f"流通市值: {stock_info.get('流通市值', 'N/A')}")
             
             # 获取历史K线数据
             with st.spinner("加载K线数据..."):
@@ -2215,14 +2599,14 @@ def market_page():
                         # 分钟级数据（仅交易日可用）
                         try:
                             if is_index:
-                                st.warning("指数暂无分钟级数据，已自动切换为日线数据。")
+                                st.info("指数暂无分钟级数据，已自动切换为日线数据。")
                                 df = ak.stock_zh_index_daily(symbol=symbol)
                                 df['date'] = pd.to_datetime(df['date'])
                                 df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
                             else:
                                 df = ak.stock_zh_a_minute(symbol=symbol, period=period, adjust="qfq")
                         except (ValueError, Exception) as e:
-                            st.warning(f"分钟K线数据获取失败: {str(e)[:50]}... 已自动切换为日线数据。")
+                            st.info(f"分钟K线数据获取失败: {str(e)[:50]}... 已自动切换为日线数据。")
                             try:
                                 if is_index:
                                     df = ak.stock_zh_index_daily(symbol=symbol)
@@ -2412,7 +2796,7 @@ def market_page():
 
 def resset_page():
     """锐思文本分析数据页面"""
-    st.markdown('<h1 class="main-header">RESSET</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">RESSET 锐思数据</h1>', unsafe_allow_html=True)
 
     if not RESSET_AVAILABLE:
         st.error("锐思文本分析模块未安装")
@@ -2479,9 +2863,47 @@ def resset_page():
                             if isinstance(content, list):
                                 content = content[0] if content else ""
                             if content:
-                                st.text_area("内容", value=content[:5000], height=300, key=f"resset_cn_content_{i}", disabled=True)
+                                st.text_area("内容预览", value=content[:5000], height=300, key=f"resset_cn_content_{i}", disabled=True)
                                 if len(content) > 5000:
                                     st.caption(f"... 内容共 {len(content)} 字，已截断显示")
+                                # 下载 / 查看完整内容
+                                safe_title = "".join(c for c in (title or "document") if c.isalnum() or c in "_- ")[:50]
+                                # 生成可下载的 HTML 文件
+                                html_content = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{safe_title}</title>
+<style>
+body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;max-width:900px;margin:40px auto;padding:20px;line-height:1.8;color:#333}}
+h1{{font-size:1.5rem;border-bottom:2px solid #f59e0b;padding-bottom:10px;margin-bottom:20px}}
+.meta{{color:#666;font-size:0.9rem;margin-bottom:20px}}
+.content{{white-space:pre-wrap;word-break:break-word;background:#f9fafb;padding:20px;border-radius:8px}}
+</style>
+</head>
+<body>
+<h1>{safe_title}</h1>
+<div class="meta">来源: 锐思 RESSET | 字数: {len(content)}</div>
+<div class="content">{content}</div>
+</body>
+</html>"""
+                                c1, c2 = st.columns([1, 1])
+                                with c1:
+                                    st.download_button(
+                                        "下载 TXT",
+                                        data=content,
+                                        file_name=f"{safe_title}_{i}.txt",
+                                        mime="text/plain",
+                                        key=f"resset_cn_dl_{i}"
+                                    )
+                                with c2:
+                                    st.download_button(
+                                        "下载 HTML (浏览器打开)",
+                                        data=html_content,
+                                        file_name=f"{safe_title}_{i}.html",
+                                        mime="text/html",
+                                        key=f"resset_cn_html_{i}"
+                                    )
                 else:
                     st.info("未查询到数据")
 
@@ -2519,9 +2941,48 @@ def resset_page():
                             if isinstance(content, list):
                                 content = content[0] if content else ""
                             if content:
-                                st.text_area("内容", value=content[:5000], height=300, key=f"resset_gov_content_{i}", disabled=True)
+                                st.text_area("内容预览", value=content[:5000], height=300, key=f"resset_gov_content_{i}", disabled=True)
                                 if len(content) > 5000:
                                     st.caption(f"... 内容共 {len(content)} 字，已截断显示")
+                                safe_title = "".join(c for c in (title or "report") if c.isalnum() or c in "_- ")[:50]
+                                html_content = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{safe_title}</title>
+<style>
+body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;max-width:900px;margin:40px auto;padding:20px;line-height:1.8;color:#333}}
+h1{{font-size:1.5rem;border-bottom:2px solid #f59e0b;padding-bottom:10px;margin-bottom:20px}}
+.meta{{color:#666;font-size:0.9rem;margin-bottom:20px}}
+.content{{white-space:pre-wrap;word-break:break-word;background:#f9fafb;padding:20px;border-radius:8px}}
+</style>
+</head>
+<body>
+<h1>{safe_title}</h1>
+<div class="meta">来源: 锐思 RESSET | 字数: {len(content)}</div>
+<div class="content">{content}</div>
+</body>
+</html>"""
+                                c1, c2, c3 = st.columns([1, 1, 1])
+                                with c1:
+                                    st.download_button(
+                                        "下载 TXT",
+                                        data=content,
+                                        file_name=f"{safe_title}_{i}.txt",
+                                        mime="text/plain",
+                                        key=f"resset_gov_dl_{i}"
+                                    )
+                                with c2:
+                                    st.download_button(
+                                        "下载 HTML (浏览器打开)",
+                                        data=html_content,
+                                        file_name=f"{safe_title}_{i}.html",
+                                        mime="text/html",
+                                        key=f"resset_gov_html_{i}"
+                                    )
+                                with c3:
+                                    with st.expander("查看完整内容"):
+                                        st.text_area("完整内容", value=content, height=600, key=f"resset_gov_full_{i}", disabled=True)
                 else:
                     st.info("未查询到数据")
 
@@ -2563,7 +3024,48 @@ def resset_page():
                             if isinstance(content, list):
                                 content = content[0] if content else ""
                             if content:
-                                st.text_area("内容", value=content[:5000], height=300, key=f"resset_us_content_{i}", disabled=True)
+                                st.text_area("内容预览", value=content[:5000], height=300, key=f"resset_us_content_{i}", disabled=True)
+                                if len(content) > 5000:
+                                    st.caption(f"... 内容共 {len(content)} 字，已截断显示")
+                                safe_title = "".join(c for c in (title or "report") if c.isalnum() or c in "_- ")[:50]
+                                html_content = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{safe_title}</title>
+<style>
+body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;max-width:900px;margin:40px auto;padding:20px;line-height:1.8;color:#333}}
+h1{{font-size:1.5rem;border-bottom:2px solid #f59e0b;padding-bottom:10px;margin-bottom:20px}}
+.meta{{color:#666;font-size:0.9rem;margin-bottom:20px}}
+.content{{white-space:pre-wrap;word-break:break-word;background:#f9fafb;padding:20px;border-radius:8px}}
+</style>
+</head>
+<body>
+<h1>{safe_title}</h1>
+<div class="meta">来源: 锐思 RESSET | 字数: {len(content)}</div>
+<div class="content">{content}</div>
+</body>
+</html>"""
+                                c1, c2, c3 = st.columns([1, 1, 1])
+                                with c1:
+                                    st.download_button(
+                                        "下载 TXT",
+                                        data=content,
+                                        file_name=f"{safe_title}_{i}.txt",
+                                        mime="text/plain",
+                                        key=f"resset_us_dl_{i}"
+                                    )
+                                with c2:
+                                    st.download_button(
+                                        "下载 HTML (浏览器打开)",
+                                        data=html_content,
+                                        file_name=f"{safe_title}_{i}.html",
+                                        mime="text/html",
+                                        key=f"resset_us_html_{i}"
+                                    )
+                                with c3:
+                                    with st.expander("查看完整内容"):
+                                        st.text_area("完整内容", value=content, height=600, key=f"resset_us_full_{i}", disabled=True)
                 else:
                     st.info("未查询到数据")
 
@@ -2724,11 +3226,36 @@ def resset_page():
             "real_estate": "房产拍卖信息",
         }.get(x, x), key="resset_ingest_type")
 
-        ingest_code = st.text_input("股票/区域代码", value="000002", key="resset_ingest_code",
-                                     help="中国上市公司: 6位股票代码; 政府: 区域代码; 美国: 英文代码")
-        ingest_subtype = st.text_input("报告子类型", value="年度报告", key="resset_ingest_subtype",
-                                        help="如: 年度报告, 10K, 行业分析, 东方财富 等")
-        ingest_year = st.number_input("年份", value=2024, min_value=2000, max_value=datetime.now().year, key="resset_ingest_year")
+        # 根据数据类型动态显示不同的输入项
+        ingest_code = ""
+        ingest_subtype = ""
+
+        if ingest_type == "cn_report":
+            ingest_code = st.text_input("股票代码", value="600519", key="ingest_cn_code",
+                                        help="6位数字代码，如 600519")
+            ingest_subtype = st.selectbox("报告类型", options=CN_REPORT_TYPES, key="ingest_cn_subtype")
+            st.caption("提示: IPO招股说明书仅在公司上市当年存在；年度报告/季报覆盖较全")
+        elif ingest_type == "gov_report":
+            gov_region_selected = st.selectbox("行政区域", options=list(REGION_CODES.keys()), key="ingest_gov_region")
+            ingest_code = REGION_CODES.get(gov_region_selected, "100100")
+            st.caption(f"区域代码: {ingest_code}")
+        elif ingest_type == "us_report":
+            ingest_code = st.text_input("美股代码", value="AAPL", key="ingest_us_code",
+                                        help="如 AAPL, AMZN, TSLA")
+            ingest_subtype = st.selectbox("报告类型", options=US_REPORT_TYPES, key="ingest_us_subtype")
+        elif ingest_type == "financial_news":
+            st.info("仅需选择年份。数据覆盖: 2017-2023")
+        elif ingest_type == "research":
+            ingest_subtype = st.selectbox("研究类型", options=RESEARCH_TYPES, key="ingest_research_subtype")
+            st.caption("数据覆盖: 2017-2023")
+        elif ingest_type == "forum":
+            ingest_subtype = st.selectbox("论坛", options=FORUM_TYPES, key="ingest_forum_subtype")
+            st.caption("数据覆盖: 2000-2023")
+        elif ingest_type == "real_estate":
+            ingest_subtype = st.selectbox("拍卖类型", options=REAL_ESTATE_TYPES, key="ingest_estate_subtype")
+            st.caption("数据覆盖: 2017-2023")
+
+        ingest_year = st.number_input("年份", value=2023, min_value=1954, max_value=datetime.now().year, key="resset_ingest_year")
 
         if st.button("填充到 RAG 知识库", type="primary", key="resset_ingest_btn"):
             with st.spinner("正在获取数据并注入 RAG 知识库..."):
@@ -2758,13 +3285,25 @@ def resset_page():
 def main():
     init_session_state()
 
+    # 启动 KG 定时调度器（被动更新：系统启动时初始化）
+    if 'kg_scheduler_initialized' not in st.session_state:
+        try:
+            from src.kg_crawler.scheduler import setup_default_tasks, get_kg_scheduler
+            setup_default_tasks()
+            get_kg_scheduler().start(blocking=False)
+            st.session_state.kg_scheduler_initialized = True
+            print("[KG Scheduler] 定时任务已启动")
+        except Exception as e:
+            st.session_state.kg_scheduler_initialized = False
+            print(f"[KG Scheduler] 启动失败: {e}")
+
     page = st.navigation([
-        st.Page(chat_page, title="CHAT"),
-        st.Page(market_page, title="MARKET"),
-        st.Page(kg_page, title="KG"),
-        st.Page(resset_page, title="RESSET"),
-        st.Page(quant_page, title="QUANT"),
-        st.Page(evaluation_page, title="EVAL"),
+        st.Page(chat_page, title="CHAT 对话"),
+        st.Page(market_page, title="MARKET 行情"),
+        st.Page(kg_page, title="KG 知识图谱"),
+        st.Page(resset_page, title="RESSET 锐思数据"),
+        st.Page(quant_page, title="QUANT 量化"),
+        st.Page(evaluation_page, title="EVAL 评估"),
     ])
     page.run()
 

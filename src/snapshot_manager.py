@@ -239,6 +239,11 @@ class SnapshotManager:
             # 执行热启动
             result = aq.run_warm_start(**warm_start_kwargs)
 
+            # 调试信息
+            trades_count = len(result.trades_df) if hasattr(result, 'trades_df') else 0
+            orders_count = len(result.orders_df) if hasattr(result, 'orders_df') else 0
+            print(f"[Snapshot] warm_start trades={trades_count}, orders={orders_count}, return={result.metrics.total_return_pct}%, final_value={result.metrics.final_value}")
+
             # 提取指标
             metrics = result.metrics
             metrics_dict = {
@@ -247,7 +252,7 @@ class SnapshotManager:
                 "sharpe_ratio": metrics.sharpe_ratio,
                 "max_drawdown_pct": metrics.max_drawdown_pct,
                 "win_rate": metrics.win_rate,
-                "total_trades": len(result.trades_df) if hasattr(result, 'trades_df') else 0,
+                "total_trades": trades_count,
                 "final_value": metrics.final_value if hasattr(metrics, 'final_value') else 0,
             }
 
