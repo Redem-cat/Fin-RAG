@@ -4,9 +4,9 @@
 
 该系统不仅支持客户与员工的自然语言问答，而且深入融合了投资建议生成与合规风险自动校验，实现智能服务 + 自动合规审查一体化。
 
-> **📌 关于 AKQuant 框架**：本项目基于 [AKQuant](https://github.com/Redem-cat/Fin-RAG) 开源框架进行二次开发。AKQuant 采用 **MIT 协议**，允许自由使用、修改和分发。详细协议内容请参阅 [`akquant-main/LICENSE`](./akquant-main/LICENSE)。
+![经典 RAG 架构](./img/classicRAG.png)
 
-![RAG architecture](./img/RAG_Elasticsearch.png)
+![FinRAG-Advisor 架构](./img/RAG_Elasticsearch.png)
 
 ## 核心特性
 
@@ -23,7 +23,7 @@
 - 自动抓取最新政策并更新知识库
 
 ### 混合检索
-- **语义检索**：BGE-M3-Financial 向量模型
+- **语义检索**：BGE-M3 向量模型
 - **关键词检索**：Elasticsearch
 - **知识图谱检索**：Neo4j 图数据库
 - **RRF 融合**：三种检索结果融合排序
@@ -76,15 +76,18 @@
 #### 拉取 Embedding 模型（用于文档向量化）
 
 ```bash
-# 拉取 Embedding 模型
-ollama pull my-bge-m3
+# 拉取 Embedding 模型（用于文档向量化）
+ollama pull bge-m3
 ```
 
-> **注意**：Embedding 模型只需要 `my-bge-m3`，对话功能已切换到 DeepSeek API，无需再拉取对话模型。
+> **注意**：Embedding 模型使用 `bge-m3`（或手动导入时自定义的名字如 `my-bge-m3`），对话功能已切换到 DeepSeek API，无需再拉取对话模型。
 
-### 3. 安装并启动 Elasticsearch
+### 3. 安装并启动 Docker 容器
+
+#### 首次安装（只需执行一次）
 
 ```bash
+# Elasticsearch
 docker run -d \
     --name es-langchain \
     -p 9200:9200 -p 9300:9300 \
@@ -93,11 +96,8 @@ docker run -d \
     -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
     -v es-data:/usr/share/elasticsearch/data \
     docker.elastic.co/elasticsearch/elasticsearch:8.11.0
-```
 
-### 3. 安装并启动 Neo4j（可选）
-
-```bash
+# Neo4j（可选）
 docker run -d \
     --name neo4j-langchain \
     -p 7474:7474 -p 7687:7687 \
@@ -106,15 +106,22 @@ docker run -d \
     neo4j:5.15-community
 ```
 
+#### 日常启动
+
+```bash
+docker start es-langchain
+docker start neo4j-langchain  # 可选
+```
+
 ### 4. 配置环境变量
 
-创建 `.env` 文件（或编辑 `elastic-start-local/.env`）：
+创建 `.env` 文件：
 
 ```bash
 DEEPSEEK_API_KEY=your_deepseek_api_key
-DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_MODEL=deepseek-v4-pro
 ES_LOCAL_URL=http://localhost:9200
-EMBEDDING_MODEL=my-bge-m3
+EMBEDDING_MODEL=bge-m3
 OLLAMA_BASE_URL=http://localhost:11434
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USERNAME=neo4j
@@ -128,36 +135,38 @@ pip install -r requirements.txt
 pip install https://rtas.resset.com/txtPath/resset-0.9.8-py3-none-any.whl  # 锐思文本分析（可选）
 ```
 
-### 6. 安装 AKQuant 量化框架
-
-```bash
-cd akquant-main
-pip install -e .
-```
-
 ---
 
 ## 快速开始
 
-### 方式一：一键启动（推荐）
+### 方式一：脚本启动（推荐）
 
 ```bash
-# Windows 双击运行或在终端执行：
+# 首次安装（只需执行一次）
+install.bat
+
+# 日常启动
 start.bat
 ```
 
-启动脚本会自动完成以下操作：
-
+**install.bat** 会完成以下操作：
 ```
-[0/5] 检查 .env 环境配置（支持根目录或 elastic-start-local/ 下的 .env）
-[1/5] 检查 Ollama Embedding 服务 → 未运行则自动启动
-[2/5] 检查 Elasticsearch → 自动处理容器冲突并创建 es-langchain 容器
-[3/5] 检查 Neo4j (可选) → 未运行则自动启动
-[4/5] 清理 Python 缓存 (__pycache__)
-[5/5] 启动 Streamlit → 访问 http://localhost:8501
+[1/4] 检查 Docker Desktop
+[2/4] 清理旧容器（如果存在）
+[3/4] 创建 Elasticsearch 容器
+[4/4] 创建 Neo4j 容器（可选）
 ```
 
-> **自动处理端口冲突**：如果已有其他容器占用了 9200 端口（如名为 `es` 的旧容器），脚本会自动停止并删除该容器，然后创建名为 `es-langchain` 的新容器，确保与项目配置一致。
+**start.bat** 会完成以下操作：
+```
+[1/6] 检查 Docker Desktop
+[2/6] 检查环境变量配置
+[3/6] 启动 Elasticsearch
+[4/6] 启动 Neo4j（可选）
+[5/6] 检查 Ollama Embedding 服务
+[6/6] 清理 Python 缓存
+[启动] Streamlit → http://localhost:8501
+```
 
 ### 方式二：手动启动
 
@@ -169,6 +178,52 @@ streamlit run src/streamlit_app.py  # 4. 启动 Web 界面
 ```
 
 > **提示**：遇到 `KeyError: 'src.rag'` 导入错误时，删除 `src/__pycache__` 目录后重试。
+
+### 知识库数据导入（重要！）
+
+RAG 智能问答功能依赖 Elasticsearch 中的向量索引 `rag-langchain`。**首次使用前必须导入文档数据**，否则会报错 `NotFoundError: no such index [rag-langchain]`。
+
+#### 数据准备
+
+将你的文档放入 `data/` 目录（支持 `.md` 和 `.pdf` 文件）：
+
+```
+data/
+├── 01_金融法规/          # 金融法规 Markdown
+├── 案例/                 # 案例
+├── 民法商法/             # 法律条文
+├── 司法解释/             # 司法解释
+├── kg_docs/              # 知识图谱专用（可选）
+└── *.pdf                 # PDF 文件也会自动处理
+```
+
+> **提示**：支持任意子目录结构，脚本会递归扫描所有文件。
+
+#### 一键导入
+
+运行内置的数据导入脚本：
+
+```bash
+# Windows
+set PYTHONIOENCODING=utf-8 && python src/store_data.py
+
+# Linux / macOS
+python src/store_data.py
+```
+
+该脚本会：
+1. 自动扫描 `data/` 下所有 `.md` 和 `.pdf` 文件
+2. 使用 **docling** 解析 PDF、**RecursiveCharacterTextSplitter** 分块
+3. 调用 Ollama Embedding 模型生成向量
+4. 批量写入 Elasticsearch，创建 `rag-langchain` 索引
+
+#### 常见问题
+
+| 问题 | 解决方案 |
+|------|---------|
+| `ModuleNotFoundError: No module named 'docling'` | 先安装依赖：`pip install docling` |
+| `UnicodeEncodeError: 'charmap' codec can't encode` | Windows 需设置编码：`set PYTHONIOENCODING=utf-8` |
+| `NotFoundError: no such index [rag-langchain]` | 说明未执行过数据导入，按上方步骤操作即可 |
 
 ---
 
@@ -209,7 +264,7 @@ streamlit run src/streamlit_app.py  # 4. 启动 Web 界面
 │  ┌─────────────────────────────────┴─────────────────────────────┐     │
 │  │                    模型层                                      │     │
 │  │  ┌──────────────────────────┐    ┌─────────────────────────┐ │     │
-│  │  │    my-bge-m3 (Ollama)     │    │   DeepSeek API          │ │     │
+│  │  │    bge-m3 (Ollama)         │    │   DeepSeek API          │ │     │
 │  │  │   (Embedding 本地)       │    │    (对话生成 - 远程)    │ │     │
 │  │  └──────────────────────────┘    └─────────────────────────┘ │     │
 │  └─────────────────────────────────────────────────────────────┘     │
@@ -305,12 +360,10 @@ langchain-ollama-elasticsearch/
 │   └── config.py               # 配置管理
 │
 ├── scripts/                    # 脚本目录
-├── elastic-start-local/        # ES 本地配置
-├── akquant-main/               # AKQuant 量化框架
-│
 ├── requirements.txt            # Python 依赖
-├── start.bat                   # 一键启动脚本（Windows）
-└── .env                        # 环境变量配置
+├── .env                        # 环境变量配置
+├── install.bat                 # 首次安装脚本（创建 Docker 容器）
+└── start.bat                  # 日常启动脚本
 ```
 
 ---
@@ -319,13 +372,13 @@ langchain-ollama-elasticsearch/
 
 | 组件 | 技术 | 说明 |
 |:-----|:-----|:-----|
-| LLM | DeepSeek Chat | 远程大模型 API |
+| LLM | DeepSeek v4-pro/v4-flash | 远程大模型 API |
 | Embedding | BGE-M3 | 文本向量化 |
 | 向量数据库 | Elasticsearch 8.11 | 文档存储与检索 |
 | 知识图谱 | Neo4j 5.15 | 图数据库 |
 | 金融数据 | AKShare | 免费金融数据接口 |
 | 文本分析 | RESSET (锐思) | 金融文本分析 API |
-| 量化框架 | AKQuant | 策略回测 + 热启动 |
+| 量化框架 | 自研量化模块 | 规则/ML 策略 + Walk-forward 回测 |
 | ML 框架 | scikit-learn / XGBoost / PyTorch | 机器学习策略 |
 | RAG 框架 | LangChain + LangGraph | 应用框架 |
 | 评估框架 | RAGAS | RAG 系统评估 |
@@ -363,6 +416,4 @@ langchain-ollama-elasticsearch/
 
 ## Copyright
 
-Copyright (C) 2026 by [Redem-cat](https://github.com/Redem-cat).
-
-This project is derived from the original work by Enrico Zimuel (Apache License).
+Copyright (C) 2026.

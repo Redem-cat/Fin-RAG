@@ -31,7 +31,7 @@ class RAGEvaluator:
         self,
         rag_chain,
         llm_provider: str = "deepseek",  # "deepseek" 或 "ollama"
-        model_name: str = "deepseek-chat",
+        model_name: str = "deepseek-v4-pro",
         embed_model: str = "bge-m3:latest",
         embed_provider: str = "ollama",  # "openai" 或 "ollama"
         base_url: str = "http://localhost:11434",

@@ -1060,7 +1060,20 @@ def quant_page():
     """量化策略回测页面（含规则策略、ML策略、快照管理、多策略模拟）"""
     st.markdown('<h1 class="main-header">QUANT 量化</h1>', unsafe_allow_html=True)
     init_session_state()
-    
+
+    # ==================== 带缓存的量化数据获取函数 ====================
+    @st.cache_data(ttl=300)  # 缓存5分钟，历史数据变化不频繁
+    def _get_stock_daily_cached(symbol, start_date, end_date):
+        """获取股票日线数据（缓存版）"""
+        import akshare as ak
+        return ak.stock_zh_a_daily(symbol=symbol, start_date=start_date, end_date=end_date)
+
+    @st.cache_data(ttl=300)
+    def _get_index_daily_cached(symbol):
+        """获取指数日线数据（缓存版，返回全量数据由调用方过滤日期）"""
+        import akshare as ak
+        return ak.stock_zh_index_daily(symbol=symbol)
+
     # 检查 AKQuant 是否可用
     if not QUANT_AVAILABLE:
         st.error("量化模块未安装，请确保 AKQuant 已正确安装")
@@ -1217,7 +1230,9 @@ def quant_page():
             _execute_backtest(
                 data_source, symbol, start_date_str, end_date_str,
                 selected_strategy_id, strategy_params, selected_strategy_name,
-                initial_cash, commission, benchmark_type
+                initial_cash, commission, benchmark_type,
+                cache_stock_func=_get_stock_daily_cached if 'quant_page' in dir() else None,
+                cache_index_func=_get_index_daily_cached if 'quant_page' in dir() else None
             )
         
         with st.expander("📖 规则策略使用指南", expanded=False):
@@ -1359,8 +1374,10 @@ def quant_page():
         if run_ml_backtest:
             with st.spinner("运行 ML Walk-forward 回测..."):
                 try:
-                    # 获取数据
-                    df = _load_market_data(ml_data_source, ml_symbol, ml_start_date, ml_end_date)
+                    # 获取数据（使用缓存版本）
+                    df = _load_market_data(ml_data_source, ml_symbol, ml_start_date, ml_end_date,
+                                          cache_stock_func=_get_stock_daily_cached if 'quant_page' in dir() else None,
+                                          cache_index_func=_get_index_daily_cached if 'quant_page' in dir() else None)
                     
                     if df is not None:
                         st.success(f"✓ 数据加载完成: {len(df)} bars")
@@ -1631,9 +1648,11 @@ def quant_page():
                 else:
                     with st.spinner("运行多策略回测..."):
                         try:
-                            # 使用与单策略相同的真实数据源和日期
+                            # 使用与单策略相同的真实数据源和日期（带缓存）
                             df = _load_market_data(quant_data_source, multi_symbol,
-                                                   quant_start_date, quant_end_date)
+                                                   quant_start_date, quant_end_date,
+                                                   cache_stock_func=_get_stock_daily_cached if 'quant_page' in dir() else None,
+                                                   cache_index_func=_get_index_daily_cached if 'quant_page' in dir() else None)
                             
                             if df is not None:
                                 st.text(f"[DEBUG] 多策略数据: {len(df)} 条, 标的={multi_symbol}")
@@ -1689,8 +1708,18 @@ def quant_page():
                     st.error(f"多策略回测失败: {result.get('error', 'Unknown')}")
 
 
-def _load_market_data(data_source, symbol, start_date, end_date):
-    """加载市场数据的辅助函数"""
+def _load_market_data(data_source, symbol, start_date, end_date,
+                       cache_stock_func=None, cache_index_func=None):
+    """加载市场数据的辅助函数
+    
+    Args:
+        data_source: 数据源类型
+        symbol: 股票代码
+        start_date: 开始日期
+        end_date: 结束日期
+        cache_stock_func: 可选的缓存版个股数据获取函数
+        cache_index_func: 可选的缓存版指数数据获取函数
+    """
     import numpy as np
     
     start_date_str = start_date.strftime("%Y%m%d") if hasattr(start_date, 'strftime') else str(start_date)
@@ -1706,13 +1735,21 @@ def _load_market_data(data_source, symbol, start_date, end_date):
                 is_index = True
         # 纯数字指数（如 000300, 399001）已在 parse_symbol 中转为 sz/sh 前缀
         if is_index:
-            df = ak.stock_zh_index_daily(symbol=symbol)
+            # 使用缓存版（如果提供）或原始 API
+            if cache_index_func is not None:
+                df = cache_index_func(symbol)
+            else:
+                df = ak.stock_zh_index_daily(symbol=symbol)
             # 统一 date 为字符串，避免 Timestamp / datetime.date 混用导致 AKQuant 过滤异常
             df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
             df = df[(df['date'] >= f"{start_date_str[:4]}-{start_date_str[4:6]}-{start_date_str[6:]}") & 
                     (df['date'] <= f"{end_date_str[:4]}-{end_date_str[4:6]}-{end_date_str[6:]}")]
         else:
-            df = ak.stock_zh_a_daily(symbol=symbol, start_date=start_date_str, end_date=end_date_str)
+            # 使用缓存版（如果提供）或原始 API
+            if cache_stock_func is not None:
+                df = cache_stock_func(symbol, start_date_str, end_date_str)
+            else:
+                df = ak.stock_zh_a_daily(symbol=symbol, start_date=start_date_str, end_date=end_date_str)
             # 个股也统一 date 格式
             if 'date' in df.columns:
                 df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
@@ -1760,11 +1797,14 @@ def _load_market_data(data_source, symbol, start_date, end_date):
 
 def _execute_backtest(data_source, symbol, start_date_str, end_date_str,
                       strategy_type, strategy_params, strategy_name,
-                      initial_cash, commission, benchmark_type):
+                      initial_cash, commission, benchmark_type,
+                      cache_stock_func=None, cache_index_func=None):
     """执行回测的辅助函数"""
     with st.spinner("Running back测..."):
         try:
-            df = _load_market_data(data_source, symbol, start_date_str, end_date_str)
+            df = _load_market_data(data_source, symbol, start_date_str, end_date_str,
+                                   cache_stock_func=cache_stock_func,
+                                   cache_index_func=cache_index_func)
             
             if df is not None:
                 benchmark_returns = None
@@ -1779,7 +1819,11 @@ def _execute_backtest(data_source, symbol, start_date_str, end_date_str,
                         bench_symbol = benchmark_type.split()[-1]
                         try:
                             import akshare as ak
-                            bench_df = ak.stock_zh_index_daily(symbol=bench_symbol)
+                            # 基准数据也使用缓存（如果提供）
+                            if cache_index_func is not None:
+                                bench_df = cache_index_func(bench_symbol)
+                            else:
+                                bench_df = ak.stock_zh_index_daily(symbol=bench_symbol)
                             bench_df['date'] = pd.to_datetime(bench_df['date'])
                             start_dt = pd.to_datetime(start_date_str)
                             end_dt = pd.to_datetime(end_date_str)
@@ -2543,7 +2587,28 @@ def market_page():
     days = date_map.get(date_range, 365)
     start_date = (today - timedelta(days=days)).strftime("%Y%m%d")
     end_date = today.strftime("%Y%m%d")
-    
+
+    # ==================== 带缓存的数据获取函数 ====================
+    @st.cache_data(ttl=60)  # 缓存60秒，避免频繁请求
+    def _get_all_stock_spot():
+        """获取全量A股实时行情（缓存版）"""
+        return ak.stock_zh_a_spot_em()
+
+    @st.cache_data(ttl=60)
+    def _get_stock_daily_cached(symbol, start_date, end_date):
+        """获取股票日线数据（缓存版）"""
+        return ak.stock_zh_a_daily(symbol=symbol, start_date=start_date, end_date=end_date)
+
+    @st.cache_data(ttl=60)
+    def _get_index_daily_cached(symbol):
+        """获取指数日线数据（缓存版）"""
+        return ak.stock_zh_index_daily(symbol=symbol)
+
+    @st.cache_data(ttl=120)  # 分钟级数据可以缓存稍长
+    def _get_stock_minute_cached(symbol, period, adjust):
+        """获取分钟级数据（缓存版）"""
+        return ak.stock_zh_a_minute(symbol=symbol, period=period, adjust=adjust)
+
     # 主内容区域
     try:
         with st.spinner("获取行情数据..."):
@@ -2551,7 +2616,7 @@ def market_page():
             stock_info = None
             if symbol.startswith(("sh", "sz")):
                 try:
-                    df_realtime = ak.stock_zh_a_spot_em()
+                    df_realtime = _get_all_stock_spot()  # 使用缓存版本
                     matched = df_realtime[df_realtime['代码'] == symbol[2:]]
                     if not matched.empty:
                         stock_info = matched.iloc[0]
@@ -2625,32 +2690,32 @@ def market_page():
                     if period in ["daily", "weekly", "monthly"]:
                         # 根据是否为指数选择不同的API
                         if is_index:
-                            # 指数使用专用接口
-                            df = ak.stock_zh_index_daily(symbol=symbol)
+                            # 指数使用专用接口（带缓存）
+                            df = _get_index_daily_cached(symbol)
                             # 过滤日期范围
                             df['date'] = pd.to_datetime(df['date'])
                             df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
                         else:
-                            df = ak.stock_zh_a_daily(symbol=symbol, start_date=start_date, end_date=end_date)
+                            df = _get_stock_daily_cached(symbol, start_date, end_date)
                     else:
                         # 分钟级数据（仅交易日可用）
                         try:
                             if is_index:
                                 st.info("指数暂无分钟级数据，已自动切换为日线数据。")
-                                df = ak.stock_zh_index_daily(symbol=symbol)
+                                df = _get_index_daily_cached(symbol)
                                 df['date'] = pd.to_datetime(df['date'])
                                 df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
                             else:
-                                df = ak.stock_zh_a_minute(symbol=symbol, period=period, adjust="qfq")
+                                df = _get_stock_minute_cached(symbol, period, "qfq")
                         except (ValueError, Exception) as e:
                             st.info(f"分钟K线数据获取失败: {str(e)[:50]}... 已自动切换为日线数据。")
                             try:
                                 if is_index:
-                                    df = ak.stock_zh_index_daily(symbol=symbol)
+                                    df = _get_index_daily_cached(symbol)
                                     df['date'] = pd.to_datetime(df['date'])
                                     df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
                                 else:
-                                    df = ak.stock_zh_a_daily(symbol=symbol, start_date=start_date, end_date=end_date)
+                                    df = _get_stock_daily_cached(symbol, start_date, end_date)
                             except Exception as daily_error:
                                 st.error(f"日线数据获取也失败: {str(daily_error)[:100]}")
                                 return

@@ -1,6 +1,9 @@
 # Store PDF documents in Elasticsearch using Ollama embeddings
 # Modified by Redem-cat
 
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
 import glob, os
 from dotenv import load_dotenv
 from pathlib import Path

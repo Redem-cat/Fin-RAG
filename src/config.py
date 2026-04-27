@@ -35,7 +35,7 @@ ES_LOCAL_API_KEY = os.getenv("ES_LOCAL_API_KEY", "")
 
 # ==================== DeepSeek LLM ====================
 
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro")
 
 
 # ==================== Ollama（已弃用，使用 DeepSeek 替代）===================

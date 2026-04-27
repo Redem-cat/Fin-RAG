@@ -75,7 +75,7 @@ class ComplianceChecker:
         self,
         api_key: str = None,
         base_url: str = "https://api.deepseek.com",
-        model: str = "deepseek-chat"
+        model: str = "deepseek-v4-pro"
     ):
         """初始化合规审查器
 

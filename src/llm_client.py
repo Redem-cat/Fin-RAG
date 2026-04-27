@@ -28,7 +28,7 @@ for env_file in ENV_FILES:
 # DeepSeek 配置
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro")
 
 
 class ChatDeepSeek(BaseChatModel):
@@ -67,7 +67,7 @@ class ChatDeepSeek(BaseChatModel):
             )
         # 解析 model
         if not self.model_ or self.model_ == DEEPSEEK_MODEL:
-            env_model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+            env_model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro")
             if env_model:
                 self.model_ = env_model
         # 创建客户端

@@ -298,7 +298,7 @@ class FinRAGAgent:
 
     def __init__(self):
         self.client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
-        self.model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+        self.model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro")
         self.tools = TOOLS
 
     def run(self, question: str, conversation_history: str = "", top_k: int = 3) -> Dict[str, Any]:
@@ -313,8 +313,19 @@ class FinRAGAgent:
                 "used_context": bool
             }
         """
-        # 构建系统提示
-        system_prompt = self._build_system_prompt(conversation_history)
+        # 智能记忆检索（带触发判断：需要才检索，不需要则跳过）
+        relevant_memories = ""
+        try:
+            mem_mgr = _get_memory_manager()
+            # 使用 smart_retrieve 替代无条件检索
+            relevant_memories = mem_mgr.smart_retrieve(question, top_k=3)
+            if not relevant_memories:
+                pass  # 未触发记忆检索，prompt 保持干净
+        except Exception as e:
+            print(f"[Agent] 记忆检索失败: {e}")
+
+        # 构建系统提示（包含长期记忆）
+        system_prompt = self._build_system_prompt(conversation_history, relevant_memories)
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -384,15 +395,20 @@ class FinRAGAgent:
             "used_context": len(tool_results) > 0
         }
 
-    def _build_system_prompt(self, conversation_history: str) -> str:
+    def _build_system_prompt(self, conversation_history: str = "", relevant_memories: str = "") -> str:
         """构建系统提示"""
-        history_section = f"\nRecent conversation:\n{conversation_history}\n" if conversation_history else ""
+        history_section = f"\n## 最近对话记录\n{conversation_history}\n" if conversation_history else ""
+        memory_section = ""
+        if relevant_memories:
+            memory_section = f"\n## 关于用户的长期记忆\n{relevant_memories}\n"
+
         return f"""你是一个专业的金融智能助手，名叫 FinRAG-Advisor。
 
 你的职责是：
 1. 回答金融法规、投资理财相关问题
 2. 提供市场数据分析和投资建议
 3. 提示投资风险，确保合规性
+4. 记住用户在对话中分享的个人信息和偏好，并在后续对话中自然地运用
 
 你可以使用以下工具来获取信息：
 - rag_search: 从金融法规知识库检索文档
@@ -402,10 +418,11 @@ class FinRAGAgent:
 
 规则：
 1. 只有当问题确实需要外部数据时才调用工具
-2. 对于常识性问题，直接回答，不调用工具
-3. 回答要准确、专业，不确定时明确告知
-4. 使用与用户问题相同的语言回答
-{history_section}"""
+2. 对于打招呼、闲聊、寒暄、自我介绍类的问题（如"你好""你是谁""还记得我吗"），直接友好回复，不调用任何工具
+3. 你拥有记忆能力，可以记住用户的偏好、背景和对话中的重要信息。当被问及关于用户的事情时，请参考「长期记忆」部分作答
+4. 回答要准确、专业，不确定时明确告知
+5. 使用与用户问题相同的语言回答
+{history_section}{memory_section}"""
 
     def _execute_tool(self, name: str, args: Dict) -> str:
         """执行指定工具"""
