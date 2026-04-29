@@ -8,6 +8,7 @@
 """
 
 import os
+import sys
 import time
 import json
 import schedule
@@ -17,7 +18,22 @@ from pathlib import Path
 import logging
 import threading
 
-logging.basicConfig(level=logging.INFO)
+# 修复 Windows 控制台中文编码问题
+if sys.platform == "win32":
+    # 确保 stdout/stderr 使用 UTF-8，防止 UnicodeEncodeError
+    try:
+        if hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        if hasattr(sys.stderr, 'reconfigure'):
+            sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+        os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+    except Exception:
+        pass
+
+# 配置日志（使用 UTF-8 handler 避免中文乱码）
+_log_handler = logging.StreamHandler(sys.stdout)
+_log_handler.setFormatter(logging.Formatter('[%(name)s] %(message)s'))
+logging.basicConfig(level=logging.INFO, handlers=[_log_handler], force=True)
 logger = logging.getLogger(__name__)
 
 
@@ -33,6 +49,7 @@ class KGScheduler:
         self.tasks: Dict[str, Dict] = {}
         self.running = False
         self._thread = None
+        self._dep_health: Dict[str, Dict] = {}  # 依赖健康状态缓存
         
         # 任务日志
         self.task_log_file = self.log_dir / "task_history.json"
@@ -153,22 +170,71 @@ class KGScheduler:
     def start(self, blocking: bool = False):
         """
         启动调度器
-        
+
         Args:
             blocking: 是否阻塞运行
         """
         if self.running:
             logger.warning("[调度器] 已在运行中")
             return
-        
+
+        # 启动前做依赖健康检查（仅记录，不阻塞启动）
+        dep_health = self.check_dependencies()
+        unhealthy = [k for k, v in dep_health.items() if not v["ok"]]
+        if unhealthy:
+            logger.warning(f"[调度器] 部分依赖不可用: {', '.join(unhealthy)} "
+                           f"(任务执行时将自动跳过不可用依赖)")
+
         self.running = True
         logger.info(f"[调度器] 启动，共 {len(self.tasks)} 个任务")
-        
+
         if blocking:
             self._run_loop()
         else:
             self._thread = threading.Thread(target=self._run_loop, daemon=True)
             self._thread.start()
+
+    def check_dependencies(self) -> Dict[str, Dict]:
+        """检查各任务依赖是否可用（不触发实际调用）"""
+        health = {}
+
+        # 检查 Neo4j
+        try:
+            from src.knowledge_graph import get_neo4j_connection
+            conn = get_neo4j_connection()
+            ok = conn.is_connected() if conn else False
+            health["neo4j"] = {"ok": ok, "detail": "已连接" if ok else "未连接/未启动"}
+        except Exception as e:
+            health["neo4j"] = {"ok": False, "detail": str(e)}
+
+        # 检查 Ollama (LLM)
+        try:
+            import ollama
+            models = ollama.list()
+            health["ollama"] = {"ok": True, "detail": f"已连接, 可用模型: {[m['name'] for m in models.get('models', [])[:3]]}"}
+        except Exception as e:
+            health["ollama"] = {"ok": False, "detail": f"Ollama 未运行或无法连接: {e}"}
+
+        # 检查 AKShare
+        try:
+            import akshare as ak
+            health["akshare"] = {"ok": True, "detail": "已安装"}
+        except ImportError:
+            health["akshare"] = {"ok": False, "detail": "未安装 (pip install akshare)"}
+        except Exception as e:
+            health["akshare"] = {"ok": False, "detail": str(e)}
+
+        # 检查 Elasticsearch
+        try:
+            from src.elasticsearch_client import get_es_client
+            es = get_es_client()
+            es.info()
+            health["elasticsearch"] = {"ok": True, "detail": "已连接"}
+        except Exception as e:
+            health["elasticsearch"] = {"ok": False, "detail": str(e)}
+
+        self._dep_health = health
+        return health
     
     def _run_loop(self):
         """运行循环"""
@@ -195,9 +261,11 @@ class KGScheduler:
     
     def get_status(self) -> Dict:
         """获取调度器状态"""
+        dep_health = getattr(self, '_dep_health', None)
         return {
             "running": self.running,
             "tasks_count": len(self.tasks),
+            "dependencies": dep_health,  # 新增：依赖健康状态
             "tasks": {
                 name: {
                     "schedule_type": info["schedule_type"],
@@ -215,15 +283,61 @@ class KGScheduler:
 # =========================
 # 🔹 预定义任务
 # =========================
+
+def _check_task_deps(required: List[str]) -> Optional[str]:
+    """检查任务所需依赖，返回 None 或错误信息"""
+    checks = {
+        "news_crawler": ("src.kg_crawler.news_crawler", "get_news_crawler"),
+        "entity_extractor": ("src.knowledge_graph", "EntityExtractor"),
+        "kg_writer": ("src.kg_builder.kg_writer", "get_kg_writer"),
+        "api_sources": ("src.kg_crawler.api_sources", "get_financial_data_source"),
+    }
+    for dep in required:
+        if dep not in checks:
+            continue
+        module_path, attr = checks[dep]
+        try:
+            mod = __import__(module_path, fromlist=[attr])
+            getattr(mod, attr)
+        except ImportError as e:
+            return f"依赖缺失 [{dep}]: {e}"
+        except Exception as e:
+            return f"依赖异常 [{dep}]: {e}"
+
+    # 检查 Neo4j（写入类任务需要）
+    if any(d in required for d in ["kg_writer", "entity_extractor"]):
+        try:
+            from src.knowledge_graph import get_neo4j_connection
+            conn = get_neo4j_connection()
+            if not conn or not conn.is_connected():
+                return f"Neo4j 未连接，跳过写入任务"
+        except Exception as e:
+            return f"Neo4j 不可用: {e}"
+
+    return None
+
+
 def task_crawl_news():
     """任务：爬取财经新闻，抽取芯片供应链实体和关系"""
+    # 依赖预检
+    dep_err = _check_task_deps(["news_crawler", "entity_extractor", "kg_writer"])
+    if dep_err:
+        logger.warning(f"[crawl_news] 跳过: {dep_err}")
+        return {"skipped": True, "reason": dep_err}
+
     from src.kg_crawler.news_crawler import get_news_crawler
     from src.knowledge_graph import EntityExtractor
     from src.kg_builder.kg_writer import get_kg_writer
     
     crawler = get_news_crawler()
     writer = get_kg_writer()
-    extractor = EntityExtractor()
+    
+    try:
+        extractor = EntityExtractor()
+    except Exception as e:
+        logger.error(f"[crawl_news] EntityExtractor 初始化失败 (Ollama未运行?): {e}")
+        return {"error": f"LLM 抽取器不可用，请确认 Ollama 已启动: {e}"}
+    
     
     # 爬取新闻（过滤芯片/半导体相关）
     news_list = crawler.crawl_all(max_count_per_source=20, filter_relevant=True)
@@ -306,6 +420,11 @@ def _infer_node_type(name: str, entities: list) -> str:
 
 def task_update_stocks():
     """任务：更新股票基础信息"""
+    dep_err = _check_task_deps(["api_sources", "kg_writer"])
+    if dep_err:
+        logger.warning(f"[update_stocks] 跳过: {dep_err}")
+        return {"skipped": True, "reason": dep_err}
+
     from src.kg_crawler.api_sources import get_financial_data_source
     from src.kg_builder.kg_writer import get_kg_writer
     
@@ -329,6 +448,11 @@ def task_update_stocks():
 
 def task_update_sectors():
     """任务：更新行业分类"""
+    dep_err = _check_task_deps(["api_sources", "kg_writer"])
+    if dep_err:
+        logger.warning(f"[update_sectors] 跳过: {dep_err}")
+        return {"skipped": True, "reason": dep_err}
+
     from src.kg_crawler.api_sources import get_financial_data_source
     from src.kg_builder.kg_writer import get_kg_writer
     

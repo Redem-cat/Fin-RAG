@@ -613,6 +613,10 @@ def generate_report(
         # 生成报告
         if output_path is None:
             output_path = f"reports/quant_report_{strategy_name}_{datetime.now().strftime('%Y%m%d_%H%M')}.html"
+
+        # 确保输出目录存在
+        import os
+        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
         
         # 准备报告参数
         report_kwargs = {

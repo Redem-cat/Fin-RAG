@@ -1,0 +1,9 @@
+[
+  {
+    "task": "crawl_news",
+    "start_time": "2026-04-27T22:31:26.154560",
+    "elapsed_seconds": 160.16,
+    "status": "success",
+    "result": "{'news_count': 2, 'entities_extracted': 2, 'relations_extracted': 1}"
+  }
+]

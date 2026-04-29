@@ -16,6 +16,7 @@
 """
 
 import os
+import sys
 import json
 import time
 from typing import Dict, List, Optional, Any, Tuple
@@ -24,8 +25,20 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import logging
 
+# 修复 Windows 控制台编码
+if sys.platform == "win32":
+    try:
+        if hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        if hasattr(sys.stderr, 'reconfigure'):
+            sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 # 配置日志
-logging.basicConfig(level=logging.INFO)
+_log_handler = logging.StreamHandler(sys.stdout)
+_log_handler.setFormatter(logging.Formatter('[%(name)s] %(message)s'))
+logging.basicConfig(level=logging.INFO, handlers=[_log_handler], force=True)
 logger = logging.getLogger(__name__)
 
 

@@ -2482,12 +2482,13 @@ def ingest_resset_data_to_rag(
     if not data:
         return {"success": False, "error": f"未获取到数据 ({label})"}
 
-    # 注入到向量数据库
-    vdb = _get_vector_db()
-    documents = []
+    # 保存到 data/ 目录（走标准 RAG 流程：原始数据 → 清洗 → 切分 → embedding → ES）
+    import os as _os
+    save_dir = _os.path.join(os.getenv('PROJECT_ROOT', '.'), 'data', 'resset_data')
+    _os.makedirs(save_dir, exist_ok=True)
 
+    saved_count = 0
     for i, item in enumerate(data[:max_items]):
-        # 提取内容
         content = (
             item.get("part_content") or item.get("all_content") or
             item.get("Content") or item.get("content") or item.get("announcement") or ""
@@ -2497,51 +2498,45 @@ def ingest_resset_data_to_rag(
         if not content or len(content.strip()) < 50:
             continue
 
-        # 截断过长内容
-        if len(content) > 8000:
-            content = content[:8000] + "...(内容已截断)"
-
-        # 提取元数据
+        # 提取元数据用于文件名
         title = item.get("title", "")
         if isinstance(title, list):
             title = title[0] if title else ""
-        name = item.get("name", "")
-        if isinstance(name, list):
-            name = name[0] if name else ""
-        code = item.get("code", "")
-        if isinstance(code, list):
-            code = code[0] if code else ""
+        safe_title = "".join(c for c in (title or f"{label}_{i}") if c.isalnum() or c in ('_', '-'))[:60]
 
-        doc = Document(
-            page_content=content,
-            metadata={
-                "source": f"resset_{data_type}",
-                "title": title,
-                "name": name,
-                "code": code,
-                "year": year,
-                "data_type": data_type,
-                "report_type": report_type,
-                "ingested_at": datetime.now().isoformat(),
-            }
-        )
-        documents.append(doc)
+        # 保存为 markdown（保留结构化信息供后续 RAG 处理）
+        md_content = f"""# {title or label}
 
-    if not documents:
-        return {"success": False, "error": "获取的数据内容为空或过短"}
+**来源**: 锐思 RESSET | **类型**: {report_type} | **年份**: {year}
+**代码**: {item.get('code', '')} | **名称**: {item.get('name', '')}
+**发布时间**: {item.get('releaseTime', '')}
 
-    # 批量添加到向量数据库
-    try:
-        ids = vdb.add_documents(documents)
-        print(f"[锐思数据] 成功注入 {len(ids)} 条文档到 RAG 知识库 ({label})")
-        return {
-            "success": True,
-            "label": label,
-            "documents_ingested": len(ids),
-            "total_data_fetched": len(data),
-        }
-    except Exception as e:
-        return {"success": False, "error": f"注入向量数据库失败: {e}"}
+---
+
+{content}
+"""
+        filename = f"{safe_title}_{year}.md"
+        filepath = _os.path.join(save_dir, filename)
+
+        # 避免文件名冲突
+        counter = 1
+        while _os.path.exists(filepath):
+            filepath = _os.path.join(save_dir, f"{safe_title}_{year}_{counter}.md")
+            counter += 1
+
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(md_content)
+        saved_count += 1
+
+    print(f"[锐思数据] 已保存 {saved_count} 条文档到 {save_dir} ({label})")
+    return {
+        "success": True,
+        "label": label,
+        "documents_saved": saved_count,
+        "total_data_fetched": len(data),
+        "save_path": save_dir,
+        "next_step": f"数据已保存至 {save_dir}，可通过标准 RAG 流程进行清洗、切分和 embedding 后注入 ES",
+    }
 
 # =========================
 # 🔹 主函数（命令行测试）

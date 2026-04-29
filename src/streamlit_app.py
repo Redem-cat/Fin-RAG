@@ -1692,8 +1692,9 @@ def quant_page():
                     
                     # 各槽位表现
                     slot_perfs = cross.get("slot_performances", {})
+                    st.markdown("#### 各槽位表现")
+                    
                     if slot_perfs:
-                        st.markdown("#### 各槽位表现")
                         perf_rows = []
                         for slot_id, perf in slot_perfs.items():
                             perf_rows.append({
@@ -1704,6 +1705,13 @@ def quant_page():
                                 "胜率%": f"{perf.get('win_rate', 0):.1f}",
                             })
                         st.dataframe(pd.DataFrame(perf_rows), width='stretch', hide_index=True)
+                    else:
+                        # 兜底：至少列出配置的槽位
+                        slot_ids = result.get("slot_ids", list(cross.get("slot_weights", {}).keys()))
+                        if slot_ids:
+                            placeholder = [{"槽位": sid, "收益率%": "-", "夏普": "-", "最大回撤%": "-", "胜率%": "-"} for sid in slot_ids]
+                            st.dataframe(pd.DataFrame(placeholder), width='stretch', hide_index=True)
+                            st.caption("⚠️ 各槽位独立指标暂不可用（AKQuant 未返回 per-slot 数据），上方指标为组合级别汇总")
                 else:
                     st.error(f"多策略回测失败: {result.get('error', 'Unknown')}")
 
@@ -2042,6 +2050,20 @@ def kg_page():
                 scheduler = get_kg_scheduler()
                 sched_status = scheduler.get_status()
                 st.caption(f"Scheduler: {'Running' if sched_status['running'] else 'Stopped'}")
+
+                # 显示依赖健康状态
+                deps = sched_status.get("dependencies", {})
+                if deps:
+                    dep_cols = st.columns(len(deps))
+                    for i, (dep_name, dep_info) in enumerate(deps.items()):
+                        with dep_cols[i]:
+                            icon = "🟢" if dep_info["ok"] else "🔴"
+                            detail = dep_info.get("detail", "?")
+                            if len(detail) > 20:
+                                detail = detail[:18] + ".."
+                            st.caption(f"{icon} {dep_name}")
+                            st.caption(detail, help=dep_info.get("detail", ""))
+
                 for name, info in sched_status.get("tasks", {}).items():
                     col_a, col_b = st.columns([3, 1])
                     with col_a:
@@ -2051,8 +2073,15 @@ def kg_page():
                         st.caption(f"{badge} {info['run_count']}次")
                     if info.get("last_run"):
                         st.caption(f"Last: {info['last_run'][:19]}")
+
+                # 手动触发依赖检查按钮
+                if st.button("🔄 刷新依赖状态", key="btn_refresh_deps"):
+                    health = scheduler.check_dependencies()
+                    for name, info in health.items():
+                        icon = "OK" if info["ok"] else "FAIL"
+                        st.write(f"**{name}**: [{icon}] {info['detail']}")
             except Exception as e:
-                st.caption(f"Scheduler: 未启动")
+                st.caption(f"Scheduler: 未启动 - {e}")
 
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -2905,12 +2934,44 @@ def resset_page():
         st.code("pip install https://rtas.resset.com/txtPath/resset-0.9.8-py3-none-any.whl", language="bash")
         return
 
-    # 检查连接状态
+    # 检查连接状态（带重试和详细诊断）
+    import traceback as tb_module
+
+    # 强制重连：清除缓存的单例，确保用最新安装的包重新登录
+    if 'resset_force_retry' not in st.session_state:
+        st.session_state.resset_force_retry = False
+
+    if st.session_state.resset_force_retry:
+        # 清除全局单例缓存，强制重建连接
+        import src.resset_data as rd_module
+        rd_module._resset_conn = None
+        print("[RESSET Page] 已清除连接缓存，将重新登录")
+        st.session_state.resset_force_retry = False
+
     available, msg = check_resset_available()
+
     if available:
         st.success(f"✓ {msg}")
     else:
-        st.warning(f"⚠ {msg}")
+        st.warning(f"⚠ 锐思 API 连接失败: {msg}")
+
+        # 显示详细错误信息
+        try:
+            from src.resset_data import RessetConnection
+            test_conn = RessetConnection()
+            test_conn._available = None  # 重置缓存
+            test_conn._ensure_login()
+        except Exception as detail_err:
+            detail_tb = tb_module.format_exc()
+            with st.expander("🔍 查看详细错误信息", expanded=False):
+                st.code(detail_tb, language="text")
+            st.caption("💡 提示: 请确认已完全重启 Streamlit（关闭后重新运行），而不仅是依赖 auto-reload")
+
+        # 重试按钮
+        if st.button("🔄 重新尝试连接", key="resset_retry_btn", type="primary"):
+            st.session_state.resset_force_retry = True
+            st.rerun()
+
         return
 
     # 子 Tab 布局
@@ -3378,8 +3439,10 @@ h1{{font-size:1.5rem;border-bottom:2px solid #f59e0b;padding-bottom:10px;margin-
         if "resset_ingest_result" in st.session_state:
             result = st.session_state.resset_ingest_result
             if result.get("success"):
-                st.success(f"✓ 成功注入 {result['documents_ingested']} 条文档到 RAG 知识库")
-                st.info(f"标签: {result['label']} | 获取数据: {result['total_data_fetched']} 条")
+                st.success(f"✓ 已保存 {result['documents_saved']} 条文档到本地")
+                st.info(f"类型: {result['label']} | 获取: {result['total_data_fetched']} 条")
+                st.caption(f"📁 保存路径: {result.get('save_path', '')}")
+                st.caption(result.get("next_step", ""))
             else:
                 st.error(f"填充失败: {result.get('error', 'Unknown')}")
 
@@ -3389,15 +3452,43 @@ def main():
 
     # 启动 KG 定时调度器（被动更新：系统启动时初始化）
     if 'kg_scheduler_initialized' not in st.session_state:
+        import traceback
+        error_detail = None
+
+        # ===== 阶段1: 导入模块 =====
         try:
             from src.kg_crawler.scheduler import setup_default_tasks, get_kg_scheduler
-            setup_default_tasks()
-            get_kg_scheduler().start(blocking=False)
-            st.session_state.kg_scheduler_initialized = True
-            print("[KG Scheduler] 定时任务已启动")
+        except ImportError as e:
+            error_detail = f"导入失败: {e}"
+            print(f"[KG Scheduler] {error_detail}")
         except Exception as e:
+            error_detail = f"未知导入错误: {e}\n{traceback.format_exc()}"
+            print(f"[KG Scheduler] {error_detail}")
+
+        # ===== 阶段2: 注册任务（不触发任何依赖加载）=====
+        if error_detail is None:
+            try:
+                setup_default_tasks()
+                print("[KG Scheduler] 任务注册成功 (crawl_news/update_stocks/update_sectors)")
+            except Exception as e:
+                error_detail = f"任务注册失败: {e}\n{traceback.format_exc()}"
+                print(f"[KG Scheduler] {error_detail}")
+
+        # ===== 阶段3: 启动调度循环（仅启动后台线程）=====
+        if error_detail is None:
+            try:
+                get_kg_scheduler().start(blocking=False)
+                st.session_state.kg_scheduler_initialized = True
+                st.session_state.kg_scheduler_error = None
+                print("[KG Scheduler] 定时调度器已启动 (后台线程)")
+            except Exception as e:
+                error_detail = f"启动线程失败: {e}\n{traceback.format_exc()}"
+                print(f"[KG Scheduler] {error_detail}")
+                st.session_state.kg_scheduler_initialized = False
+                st.session_state.kg_scheduler_error = error_detail
+        else:
             st.session_state.kg_scheduler_initialized = False
-            print(f"[KG Scheduler] 启动失败: {e}")
+            st.session_state.kg_scheduler_error = error_detail
 
     page = st.navigation([
         st.Page(chat_page, title="CHAT 对话"),

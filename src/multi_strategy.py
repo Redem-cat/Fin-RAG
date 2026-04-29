@@ -189,7 +189,7 @@ class MultiStrategySimulator:
             orders_count = len(result.orders_df) if hasattr(result, 'orders_df') else 0
             print(f"[MultiStrategy] trades={trades_count}, orders={orders_count}, return={result.metrics.total_return_pct}%")
 
-            # 提取指标
+            # 提取指标（主策略/组合级别）
             metrics = result.metrics
             metrics_dict = {
                 "total_return_pct": metrics.total_return_pct,
@@ -206,9 +206,68 @@ class MultiStrategySimulator:
                 if metrics_dict[key] is not None and not isinstance(metrics_dict[key], dict):
                     metrics_dict[key] = float(metrics_dict[key])
 
-            # 缓存主策略指标，用于跨策略计算
-            primary_slot_id = list(self.slots.keys())[0] if self.slots else "alpha"
-            self._results_cache[primary_slot_id] = metrics_dict
+            # ===== 缓存每个槽位的独立结果 =====
+            self._results_cache.clear()
+
+            # 尝试从 result 中提取各槽位独立指标
+            _slot_metrics_found = False
+
+            # 方式1: 检查 AKQuant 是否返回了 per-slot 结果
+            if hasattr(result, 'slot_results') and result.slot_results:
+                _slot_metrics_found = True
+                for sid, s_result in result.slot_results.items():
+                    try:
+                        s_m = s_result.metrics if hasattr(s_result, 'metrics') else s_result
+                        self._results_cache[sid] = {
+                            "total_return_pct": getattr(s_m, 'total_return_pct', 0),
+                            "sharpe_ratio": getattr(s_m, 'sharpe_ratio', 0),
+                            "max_drawdown_pct": getattr(s_m, 'max_drawdown_pct', 0),
+                            "win_rate": getattr(s_m, 'win_rate', 0),
+                        }
+                    except Exception:
+                        pass
+
+            # 方式2: 检查是否有 strategy_metrics / per_strategy 字段
+            if not _slot_metrics_found and hasattr(result, 'strategy_metrics') and result.strategy_metrics:
+                _slot_metrics_found = True
+                for sid, s_m in result.strategy_metrics.items():
+                    self._results_cache[sid] = {
+                        "total_return_pct": float(getattr(s_m, 'total_return_pct', 0) or 0),
+                        "sharpe_ratio": float(getattr(s_m, 'sharpe_ratio', 0) or 0),
+                        "max_drawdown_pct": float(getattr(s_m, 'max_drawdown_pct', 0) or 0),
+                        "win_rate": float(getattr(s_m, 'win_rate', 0) or 0),
+                    }
+
+            # 方式3: 如果无法获取各槽位独立指标，逐槽位运行回测
+            if not _slot_metrics_found and len(self.slots) > 1:
+                print(f"[MultiStrategy] 未检测到 per-slot 结果，将逐槽位回测以获取独立指标...")
+                for slot_id, slot in self.slots.items():
+                    try:
+                        single_kwargs = dict(backtest_kwargs)
+                        single_kwargs["strategy"] = slot.strategy_class
+                        single_kwargs.pop("strategies_by_slot", None)
+                        single_kwargs.pop("strategy_max_order_size", None)
+
+                        single_result = aq.run_backtest(**single_kwargs)
+                        sr_metrics = single_result.metrics
+                        self._results_cache[slot_id] = {
+                            "total_return_pct": float(sr_metrics.total_return_pct or 0),
+                            "sharpe_ratio": float(sr_metrics.sharpe_ratio or 0),
+                            "max_drawdown_pct": float(sr_metrics.max_drawdown_pct or 0),
+                            "win_rate": float(sr_metrics.win_rate or 0),
+                            "total_trades": len(single_result.trades_df) if hasattr(single_result, 'trades_df') else 0,
+                        }
+                        print(f"  [Slot {slot_id}] return={sr_metrics.total_return_pct}% sharpe={sr_metrics.sharpe_ratio}")
+                    except Exception as e:
+                        print(f"  [Slot {slot_id}] 回测失败，使用组合指标作为替代: {e}")
+                        self._results_cache[slot_id] = dict(metrics_dict)
+
+                _slot_metrics_found = True
+
+            # 兜底: 单策略或全部失败时用组合指标填充所有槽位
+            if not self._results_cache:
+                for slot_id in self.slots.keys():
+                    self._results_cache[slot_id] = dict(metrics_dict)
 
             # 计算跨策略指标
             cross_metrics = self.get_cross_slot_metrics({
